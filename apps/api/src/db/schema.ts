@@ -8,6 +8,7 @@
  */
 
 import {
+  bigint,
   bigserial,
   boolean,
   date,
@@ -90,7 +91,7 @@ export const meals = pgTable("meals", {
   totalProteinG: doublePrecision("total_protein_g").notNull(),
   totalFatG: doublePrecision("total_fat_g").notNull(),
   totalCarbsG: doublePrecision("total_carbs_g").notNull(),
-  analysisLogId: bigserial("analysis_log_id", { mode: "number" }),
+  analysisLogId: bigint("analysis_log_id", { mode: "number" }).references(() => analysisLogs.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
@@ -98,7 +99,7 @@ export const meals = pgTable("meals", {
 /** meal_items: 食事に含まれる個別の料理・食材 */
 export const mealItems = pgTable("meal_items", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
-  mealId: bigserial("meal_id", { mode: "number" })
+  mealId: bigint("meal_id", { mode: "number" })
     .notNull()
     .references(() => meals.id),
   name: text("name").notNull(),
@@ -141,7 +142,7 @@ export const foodDb = pgTable(
 export const foodAliases = pgTable("food_aliases", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   alias: text("alias").notNull().unique(),
-  foodDbId: bigserial("food_db_id", { mode: "number" })
+  foodDbId: bigint("food_db_id", { mode: "number" })
     .notNull()
     .references(() => foodDb.id),
 });
