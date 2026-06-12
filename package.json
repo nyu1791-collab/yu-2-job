@@ -1,0 +1,17 @@
+{
+  "name": "pashacaro",
+  "private": true,
+  "version": "0.1.0",
+  "description": "写真AI食事管理アプリ「パシャカロ(仮称)」 monorepo",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.34.3",
+  "scripts": {
+    "dev": "pnpm --filter @pashacaro/api dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  }
+}
