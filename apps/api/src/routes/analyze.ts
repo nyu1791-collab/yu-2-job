@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   AnalysisSchema,
+  matchAnalysis,
   type Analysis,
   type CorrectedAnalysis,
 } from "@pashacaro/shared";
@@ -13,6 +14,10 @@ import {
   type AnalyzePipelineResult,
 } from "../lib/analyze.js";
 import { requireDevToken } from "../lib/auth.js";
+import { getDb, isDbConfigured } from "../db/client.js";
+import { DEV_USER_ID } from "../db/seed.js";
+import { recordAnalysisLog } from "../lib/analysis-logs.js";
+import { buildMatchesForDishes } from "../lib/food-lookup.js";
 
 export const analyzeRoute = new Hono();
 
@@ -35,6 +40,7 @@ interface AnalyzeSuccessResponse {
   model: string;
   usage: AnalyzePipelineResult["usage"];
   matched_product_id: null;
+  analysisLogId: number | null;
 }
 
 /** PLAN.md §4.2 失敗時UXの応答ヘルパー */
@@ -81,6 +87,7 @@ analyzeRoute.post("/v1/analyze", requireDevToken(), async (c) => {
 
   const context = buildContext({ takenAt, userNote });
 
+  const startedAt = Date.now();
   try {
     const result = await runAnalysisPipeline({
       mediaType,
@@ -88,9 +95,9 @@ analyzeRoute.post("/v1/analyze", requireDevToken(), async (c) => {
       context,
     });
 
-    return handlePipelineResult(c, result);
+    return await handlePipelineResult(c, result, Date.now() - startedAt);
   } catch (err) {
-    return handlePipelineError(c, err);
+    return await handlePipelineError(c, err, Date.now() - startedAt);
   }
 });
 
@@ -110,21 +117,50 @@ analyzeRoute.post("/v1/analyze/text", requireDevToken(), async (c) => {
   const { text, takenAt } = parseResult.data;
   const context = buildContext({ text, takenAt });
 
+  const startedAt = Date.now();
   try {
     const result = await runAnalysisPipeline({
       mediaType: "image/jpeg", // 画像なし。フィールドはCallModelOptionsの型整合のためダミー値
       context,
     });
 
-    return handlePipelineResult(c, result);
+    return await handlePipelineResult(c, result, Date.now() - startedAt);
   } catch (err) {
-    return handlePipelineError(c, err);
+    return await handlePipelineError(c, err, Date.now() - startedAt);
   }
 });
 
-function handlePipelineResult(c: import("hono").Context, result: AnalyzePipelineResult) {
+/**
+ * 解析結果(成功)を処理する。
+ *
+ * DB設定済み(isDbConfigured())の場合:
+ *   1. food-lookupでdishごとの食材を成分表突合(food-lookup.ts + nutrition-match)
+ *   2. corrected/カバレッジ/乖離減点を反映し、totalをdish合算で再計算
+ *   3. analysis_logsに記録(status: ok | not_food)し analysisLogId をレスポンスに含める
+ *
+ * DB未設定(DATABASE_URLなし・非テスト)の場合:
+ *   補正・ログ記録をスキップし、M1と同じ動作にフォールバックする
+ *   (analysisLogId は null)。
+ */
+async function handlePipelineResult(
+  c: import("hono").Context,
+  result: AnalyzePipelineResult,
+  latencyMs: number,
+) {
   // パース失敗(両モデル) -> 422
   if (result.parsed === null) {
+    if (isDbConfigured()) {
+      const db = await getDb();
+      await recordAnalysisLog(db, {
+        userId: DEV_USER_ID,
+        model: result.finalModel,
+        escalated: result.escalated,
+        flagged: result.flagged,
+        usage: result.usage,
+        latencyMs,
+        status: "parse_failed",
+      });
+    }
     return c.json(
       {
         error_kind: "parse_failed",
@@ -136,11 +172,26 @@ function handlePipelineResult(c: import("hono").Context, result: AnalyzePipeline
 
   // is_food: false -> 200 + {error_kind: "not_food"}
   if (!result.parsed.is_food) {
+    let analysisLogId: number | null = null;
+    if (isDbConfigured()) {
+      const db = await getDb();
+      analysisLogId = await recordAnalysisLog(db, {
+        userId: DEV_USER_ID,
+        model: result.finalModel,
+        escalated: result.escalated,
+        flagged: result.flagged,
+        usage: result.usage,
+        latencyMs,
+        status: "not_food",
+        rawResponse: result.parsed,
+      });
+    }
     return c.json(
       {
         error_kind: "not_food",
         message: "食事が写っていないようです。",
         analysis: result.parsed,
+        analysisLogId,
       },
       200,
     );
@@ -149,19 +200,44 @@ function handlePipelineResult(c: import("hono").Context, result: AnalyzePipeline
   // 検証: AnalysisSchemaに準拠していること(messages.parseで既に保証されるが二重チェック)
   const validated = AnalysisSchema.parse(result.parsed);
 
+  let analysis: CorrectedAnalysis | Analysis = validated;
+  let analysisLogId: number | null = null;
+
+  if (isDbConfigured()) {
+    const db = await getDb();
+
+    // 成分表突合(food-lookup + nutrition-match)。
+    // 乖離減点(confidence-0.15 + notes追記)は matchAnalysis 内で処理済み。
+    const matchesPerDish = await buildMatchesForDishes(db, validated.dishes);
+    const matchResult = matchAnalysis(validated, matchesPerDish);
+    analysis = matchResult.analysis;
+
+    analysisLogId = await recordAnalysisLog(db, {
+      userId: DEV_USER_ID,
+      model: result.finalModel,
+      escalated: result.escalated,
+      flagged: result.flagged,
+      usage: result.usage,
+      latencyMs,
+      status: "ok",
+      rawResponse: validated,
+    });
+  }
+
   const response: AnalyzeSuccessResponse = {
-    analysis: validated,
+    analysis,
     escalated: result.escalated,
     flagged: result.flagged,
     model: result.finalModel,
     usage: result.usage,
     matched_product_id: null, // Phase2布石
+    analysisLogId,
   };
 
   return c.json(response, 200);
 }
 
-function handlePipelineError(c: import("hono").Context, err: unknown) {
+async function handlePipelineError(c: import("hono").Context, err: unknown, latencyMs: number) {
   if (err instanceof MissingApiKeyError) {
     return c.json({ error_kind: "config_error", message: err.message }, 500);
   }
@@ -177,6 +253,9 @@ function handlePipelineError(c: import("hono").Context, err: unknown) {
       anthropicError.status === 504 ||
       anthropicError.name === "APIConnectionTimeoutError")
   ) {
+    if (isDbConfigured()) {
+      await recordErrorLog(latencyMs, anthropicError);
+    }
     return c.json(
       { error_kind: "upstream_unavailable", message: "解析サーバが混み合っています。もう一度お試しください。" },
       503,
@@ -185,6 +264,9 @@ function handlePipelineError(c: import("hono").Context, err: unknown) {
 
   // レート制限超過(M5で実装予定。現状は到達しない)
   if (anthropicError && anthropicError.status === 429) {
+    if (isDbConfigured()) {
+      await recordErrorLog(latencyMs, anthropicError);
+    }
     return c.json(
       { error_kind: "rate_limited", message: "本日の解析上限に達しました。" },
       429,
@@ -192,8 +274,31 @@ function handlePipelineError(c: import("hono").Context, err: unknown) {
   }
 
   console.error("analyze pipeline error:", err);
+  if (isDbConfigured()) {
+    await recordErrorLog(latencyMs, err);
+  }
   return c.json(
     { error_kind: "error", message: "解析中にエラーが発生しました。" },
     500,
   );
+}
+
+/** status="error" として analysis_logs に記録する(モデル不明のため model は "unknown")。 */
+async function recordErrorLog(latencyMs: number, err: unknown): Promise<void> {
+  const db = await getDb();
+  await recordAnalysisLog(db, {
+    userId: DEV_USER_ID,
+    model: "unknown",
+    escalated: false,
+    flagged: false,
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+    latencyMs,
+    status: "error",
+    rawResponse: { error: String(err) },
+  });
 }
