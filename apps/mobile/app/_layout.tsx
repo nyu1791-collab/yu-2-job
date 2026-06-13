@@ -1,10 +1,73 @@
 import { Redirect, Stack, usePathname } from "expo-router";
+import type { ErrorBoundaryProps } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, AppState, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { getDevToken } from "../src/lib/api-client";
 import { loadAuthFromStorage, useAuthState } from "../src/lib/auth-store";
 import { syncMealReminders } from "../src/lib/notifications";
+
+/**
+ * Webデモのデバッグ補助: 起動時/実行時に未捕捉のJSエラーが発生すると画面が
+ * 真っ白になり原因が分からないため、Webでは window のエラーを画面上の
+ * オーバーレイ(赤背景の<pre>)に出力する。これにより端末のスクショから
+ * 実際のエラー内容を確認できる。Web以外(iOS/Android)では何もしない。
+ */
+if (Platform.OS === "web" && typeof window !== "undefined" && typeof document !== "undefined") {
+  const showError = (label: string, detail: unknown) => {
+    const message =
+      detail instanceof Error
+        ? detail.stack || detail.message
+        : typeof detail === "string"
+          ? detail
+          : (() => {
+              try {
+                return JSON.stringify(detail);
+              } catch {
+                return String(detail);
+              }
+            })();
+    let el = document.getElementById("__pashacaro_err");
+    if (!el) {
+      el = document.createElement("pre");
+      el.id = "__pashacaro_err";
+      el.style.cssText =
+        "position:fixed;inset:0;z-index:99999;margin:0;padding:16px;background:#1a0000;color:#ff9d9d;font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;overflow:auto;";
+      document.body.appendChild(el);
+    }
+    el.textContent = `${el.textContent ?? ""}[${label}] ${message}\n\n`;
+  };
+  window.addEventListener("error", (e) => showError("error", e.error ?? e.message));
+  window.addEventListener("unhandledrejection", (e) =>
+    showError("unhandledrejection", (e as PromiseRejectionEvent).reason),
+  );
+}
+
+/**
+ * expo-routerのErrorBoundary。配下のルートのレンダリングで例外が発生した場合に
+ * 真っ白画面の代わりにエラー内容を表示する(本番ビルドでも有効)。
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#1a0000" }}
+      contentContainerStyle={{ padding: 20, paddingTop: 60 }}
+    >
+      <Text style={{ color: "#ff9d9d", fontSize: 16, fontWeight: "700", marginBottom: 12 }}>
+        エラーが発生しました
+      </Text>
+      <Text style={{ color: "#ffd6d6", fontSize: 12, fontFamily: "monospace", marginBottom: 20 }}>
+        {error.stack || error.message}
+      </Text>
+      <Pressable
+        onPress={retry}
+        style={{ backgroundColor: "#ff5252", paddingVertical: 12, borderRadius: 8, alignItems: "center" }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "700" }}>再試行</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
 
 /**
  * ルートレイアウト(M5版)。
