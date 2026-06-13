@@ -5,5 +5,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src", "test", "api", "drizzle.config.ts"]
+  "include": ["src", "test", "drizzle.config.ts"]
 }

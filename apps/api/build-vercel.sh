@@ -1,29 +1,79 @@
 #!/usr/bin/env bash
 #
-# Vercel(Node.jsランタイム)向けにサーバーレス関数をバンドルする。
+# Vercel Build Output API (v3) を生成するビルドスクリプト。
 #
-# なぜ必要か:
-#   apps/api は内部import("../foo.js" 形式で実体は .ts)とワークスペースパッケージ
-#   (@pashacaro/shared は exports が生の .ts)に依存しており、tsx等のTS対応ローダーが
-#   無いと実行できない。Vercelの本番ランタイムは素のNodeで .ts を解決できないため、
-#   デプロイされた関数が起動時に必ずクラッシュする(FUNCTION_INVOCATION_FAILED)。
-#   そこで esbuild で api/index.ts を依存込みの単一JSにバンドルし、素のNodeで動く
-#   api/index.js を生成して関数として配信する。
+# なぜこの方式か:
+#   apps/api は内部importが拡張子.js表記(実体は.ts)で、ワークスペース
+#   @pashacaro/shared も exports が生の .ts。これらは tsx 等のTS対応ローダーが
+#   無いと実行できず、Vercelのゼロコンフィグ(api/ディレクトリ自動検出)で
+#   デプロイすると素のNodeランタイムが .ts を解決できず関数が起動時にクラッシュする
+#   (FUNCTION_INVOCATION_FAILED)。また vercel.json の functions パターンは
+#   「コミット済みソースのapi/」に対して検証されるため、ビルドで生成したファイルを
+#   指定すると "pattern doesn't match" でビルドが落ちる。
 #
-# pglite(@electric-sql/pglite)は本番では未使用(DATABASE_URL設定時はpostgres-jsを使う)で
-# wasmを含むためバンドルから除外(external)し、動的importのまま残す。
+#   そこで Build Output API を使う。esbuild で src/vercel-entry.ts を依存込みの
+#   単一ESMにバンドルし、.vercel/output/ 配下に関数・ルーティング・静的ファイルを
+#   自前で配置する。Vercelは .vercel/output/ をそのまま配信するため、ソース検出や
+#   パターン検証・ビルド順序に左右されず確実に動く。
+#
+# pglite(@electric-sql/pglite / drizzle-orm/pglite)は開発・テスト専用で本番未使用。
+# wasmを含みバンドルできないため external にし、動的importのまま残す
+# (本番では DATABASE_URL 設定により postgres-js 経路のみ実行され、pgliteは呼ばれない)。
 set -euo pipefail
 cd "$(dirname "$0")"
 
-./node_modules/.bin/esbuild api/index.ts \
+OUT=".vercel/output"
+FUNC="$OUT/functions/api/index.func"
+
+rm -rf "$OUT"
+mkdir -p "$FUNC" "$OUT/static"
+
+# 1) 関数本体を単一ESMにバンドル
+./node_modules/.bin/esbuild src/vercel-entry.ts \
   --bundle \
   --platform=node \
   --format=esm \
   --target=node20 \
-  --outfile=api/_func.mjs \
+  --outfile="$FUNC/index.mjs" \
   --external:@electric-sql/pglite \
+  --external:@electric-sql/pglite/contrib/pg_trgm \
+  --external:drizzle-orm/pglite \
   --banner:js="import { createRequire as ___cr } from 'module'; import { fileURLToPath as ___f } from 'url'; import { dirname as ___d } from 'path'; const require = ___cr(import.meta.url); const __filename = ___f(import.meta.url); const __dirname = ___d(__filename);"
 
-rm api/index.ts
-mv api/_func.mjs api/index.js
-echo "Bundled Vercel function -> apps/api/api/index.js"
+# 2) 関数の設定(Nodeランタイム / ハンドラ / ESM)
+cat > "$FUNC/.vc-config.json" <<'JSON'
+{
+  "runtime": "nodejs20.x",
+  "handler": "index.mjs",
+  "launcherType": "Nodejs",
+  "shouldAddHelpers": false,
+  "maxDuration": 60
+}
+JSON
+
+# 3) .mjs を ESM 扱いにする(関数ディレクトリ内)
+cat > "$FUNC/package.json" <<'JSON'
+{ "type": "module" }
+JSON
+
+# 4) ルーティング + Cron(Build Output API config)
+cat > "$OUT/config.json" <<'JSON'
+{
+  "version": 3,
+  "routes": [
+    { "src": "^/health$", "dest": "/api/index" },
+    { "src": "^/v1/(.*)$", "dest": "/api/index" },
+    { "handle": "filesystem" }
+  ],
+  "crons": [
+    { "path": "/v1/internal/cost-report", "schedule": "0 18 * * *" }
+  ]
+}
+JSON
+
+# 5) 静的ファイル(ランディングページ)
+if [ -d public ]; then
+  cp -R public/. "$OUT/static/"
+fi
+
+echo "Build Output API generated at apps/api/$OUT"

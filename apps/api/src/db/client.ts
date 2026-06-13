@@ -13,9 +13,15 @@
  * 呼び出し側(/v1/analyze等)は補正・ログ記録をスキップして従来動作にフォールバックする。
  */
 
-import { drizzle as drizzlePglite, type PgliteDatabase } from "drizzle-orm/pglite";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { drizzle as drizzlePostgresJs, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
+
+// 注意: PGlite(@electric-sql/pglite)とdrizzle-orm/pglite は開発・テスト専用。
+// 本番(Vercel)では DATABASE_URL が設定され postgres-js を使うため、これらは
+// 一切ロードしない。Vercelの単一ファイルバンドルに pglite(wasm含む)を巻き込むと
+// 関数がロード時にクラッシュするため、値としてのimportはすべて createPgliteDb 内の
+// 動的import に閉じ込め、ここでは型(type-only)のみをimportする。
 
 export type Schema = typeof schema;
 export type Db = PgliteDatabase<Schema> | PostgresJsDatabase<Schema>;
@@ -87,6 +93,7 @@ function isTestEnv(): boolean {
 async function createPgliteDb(): Promise<PgliteDatabase<Schema>> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { pg_trgm } = await import("@electric-sql/pglite/contrib/pg_trgm");
+  const { drizzle: drizzlePglite } = await import("drizzle-orm/pglite");
 
   const client = await PGlite.create({
     extensions: { pg_trgm },

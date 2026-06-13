@@ -9,10 +9,9 @@ build/
 .expo-shared/
 web-build/
 
-# Vercel function bundle (apps/api): generated during the Vercel build by
-# apps/api/build-vercel.sh from the committed api/index.ts (kept out of git)
-apps/api/api/index.js
-apps/api/api/_func.mjs
+# Vercel Build Output API (apps/api): generated during the Vercel build by
+# apps/api/build-vercel.sh (kept out of git)
+.vercel/
 
 # env
 .env
