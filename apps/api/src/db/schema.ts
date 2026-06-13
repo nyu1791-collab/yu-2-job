@@ -174,6 +174,7 @@ export const analysisLogs = pgTable("analysis_logs", {
  * subscriptions: RevenueCat Webhookと同期する課金状態。
  * entitlement: RevenueCatのentitlement識別子
  * status: "trial" | "active" | "billing_issue" | "expired"
+ * lastEventId: 直近処理したRevenueCat イベントID(event.id)。Webhookの冪等性に使用する。
  */
 export const subscriptions = pgTable("subscriptions", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -187,7 +188,47 @@ export const subscriptions = pgTable("subscriptions", {
   productId: text("product_id").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   lastEventAt: timestamp("last_event_at", { withTimezone: true }).notNull(),
+  lastEventId: text("last_event_id"),
   rawLastEvent: jsonb("raw_last_event"),
+});
+
+/**
+ * processed_webhook_events: RevenueCat Webhookイベントの冪等性テーブル。
+ *
+ * event.id ごとに1行記録し、同一イベントの再送をno-opにする
+ * (subscriptionsへの反映が完了したことを示す履歴としても使う)。
+ */
+export const processedWebhookEvents = pgTable("processed_webhook_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  rcAppUserId: text("rc_app_user_id").notNull(),
+  userId: uuid("user_id").references(() => users.id),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * pending_subscription_events: RevenueCatの app_user_id が users.rc_app_user_id に
+ * まだ紐付いていない場合に、Webhookイベントを一時保存するテーブル。
+ *
+ * 設計判断(PLAN.md §4.2 M5):
+ * - Webhookは「Apple/Googleサインインより先に匿名IDで購入が成立する」順序を許容するため、
+ *   app_user_id(RevenueCat匿名ID or エイリアス後ID)に対応する users 行が
+ *   見つからない場合でも 404 を返さず 200 を返す(RevenueCatの再送ループを避ける)。
+ * - イベントは rc_app_user_id をキーにここへ保存し、ユーザーがサインイン後に
+ *   `Purchases.logIn(userId)` -> サーバの `PUT /v1/me/rc-app-user-id` で
+ *   users.rc_app_user_id を更新したタイミングで、保留イベントを古い順に再適用し
+ *   subscriptionsへ反映する(applyPendingSubscriptionEvents)。
+ * - event_id で冪等(同一イベントは1行のみ保存)。
+ */
+export const pendingSubscriptionEvents = pgTable("pending_subscription_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  rcAppUserId: text("rc_app_user_id").notNull(),
+  payload: jsonb("payload").notNull(),
+  eventTimestampMs: bigint("event_timestamp_ms", { mode: "number" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**

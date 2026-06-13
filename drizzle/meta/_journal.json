@@ -15,6 +15,13 @@
       "when": 1781277773621,
       "tag": "0001_pg_trgm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781315996215,
+      "tag": "0002_cuddly_black_widow",
+      "breakpoints": true
     }
   ]
 }
