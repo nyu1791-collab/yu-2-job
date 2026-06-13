@@ -5,12 +5,15 @@ import { StatusBar } from "expo-status-bar";
 import { loadAuthFromStorage, useAuthState } from "../src/lib/auth-store";
 
 /**
- * ルートレイアウト(M3版)。
+ * ルートレイアウト(M4版)。
  *
  * 起動時に loadAuthFromStorage() でexpo-secure-storeからトークンを復元し、
  * - 未サインイン(accessTokenなし) -> (onboarding) へリダイレクト
- * - サインイン済みなのに (onboarding) 配下にいる -> ホーム(/) へリダイレクト
+ * - サインイン済みなのに (onboarding) 配下にいる -> ホーム((tabs))へリダイレクト
  * という最小限のルートガードを行う。
+ *
+ * M4でホームをタブレイアウト((tabs))化したため、ホームのルートは
+ * "/(tabs)" (= (tabs)/index.tsx) になる。
  *
  * entitlement(課金状態)によるpaywallガードはM5で追加する。
  */
@@ -37,20 +40,22 @@ export default function RootLayout() {
   }
 
   if (auth.accessToken && inOnboarding) {
-    return <Redirect href="/" />;
+    return <Redirect href="/(tabs)" />;
   }
 
   return (
     <>
       <StatusBar style="auto" />
       <Stack>
-        <Stack.Screen name="index" options={{ title: "パシャカロ" }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="capture/camera" options={{ title: "撮影", headerShown: false }} />
         <Stack.Screen
           name="capture/analyzing"
           options={{ title: "解析中", headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen name="capture/result" options={{ title: "解析結果" }} />
+        <Stack.Screen name="capture/text-input" options={{ title: "テキストで入力" }} />
+        <Stack.Screen name="meal/[id]" options={{ title: "食事の詳細" }} />
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
       </Stack>
     </>
