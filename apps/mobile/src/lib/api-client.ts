@@ -44,6 +44,7 @@ export interface AnalyzeSuccess {
   model: string;
   usage: AnalyzeUsage;
   matched_product_id: null;
+  analysisLogId: number | null;
 }
 
 export interface AnalyzeFailure {
@@ -150,6 +151,7 @@ async function parseResponse(res: Response): Promise<AnalyzeResponse> {
         cache_creation_input_tokens: 0,
       },
       matched_product_id: null,
+      analysisLogId: body.analysisLogId ?? null,
     };
   }
 
@@ -355,4 +357,181 @@ export async function updateMyGoal(input: UpdateGoalInput): Promise<GoalRow> {
   }
   const body = (await res.json()) as { goal: GoalRow };
   return body.goal;
+}
+
+// ---------------------------------------------------------------------------
+// 食事記録 (PLAN.md §4.3 / §4.5 M4)
+// ---------------------------------------------------------------------------
+
+export interface MealItemPayload {
+  name: string;
+  grams: number;
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  confidence: number;
+  corrected?: boolean;
+  food_db_id?: number | null;
+  user_edited?: boolean;
+  sort_order?: number;
+}
+
+export interface MealRow {
+  id: number;
+  userId: string;
+  eatenOn: string;
+  eatenAt: string;
+  mealType: Analysis["meal_type"];
+  source: "photo" | "text" | "manual";
+  totalKcal: number;
+  totalProteinG: number;
+  totalFatG: number;
+  totalCarbsG: number;
+  analysisLogId: number | null;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+export interface MealItemRow {
+  id: number;
+  mealId: number;
+  name: string;
+  grams: number;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  carbsG: number;
+  confidence: number;
+  corrected: boolean;
+  foodDbId: number | null;
+  userEdited: boolean;
+  sortOrder: number;
+}
+
+export interface MealWithItems {
+  meal: MealRow;
+  items: MealItemRow[];
+}
+
+export interface CreateMealInput {
+  analysisLogId?: number | null;
+  eatenOn: string;
+  eatenAt: string;
+  mealType: Analysis["meal_type"];
+  source: "photo" | "text" | "manual";
+  items: MealItemPayload[];
+}
+
+/** POST /v1/meals: analysisLogId + 編集後itemsを保存する。 */
+export async function createMeal(input: CreateMealInput): Promise<MealWithItems> {
+  const res = await authedFetch("/v1/meals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /v1/meals failed: ${res.status}`);
+  }
+  return (await res.json()) as MealWithItems;
+}
+
+/** GET /v1/meals?date=YYYY-MM-DD: 指定日のmeals一覧を返す。 */
+export async function getMealsByDate(date: string): Promise<MealWithItems[]> {
+  const res = await authedFetch(`/v1/meals?date=${encodeURIComponent(date)}`);
+  if (!res.ok) {
+    throw new Error(`GET /v1/meals failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { meals: MealWithItems[] };
+  return body.meals;
+}
+
+/** GET /v1/meals/:id: 1件のmeal+itemsを返す。404の場合はnull。 */
+export async function getMealById(id: number): Promise<MealWithItems | null> {
+  const res = await authedFetch(`/v1/meals/${id}`);
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`GET /v1/meals/${id} failed: ${res.status}`);
+  }
+  return (await res.json()) as MealWithItems;
+}
+
+export interface UpdateMealInput {
+  eatenOn?: string;
+  eatenAt?: string;
+  mealType?: Analysis["meal_type"];
+  items?: MealItemPayload[];
+}
+
+/** PATCH /v1/meals/:id: items差し替え・meal_type/eaten_at変更。totalsはサーバ側で再計算される。 */
+export async function updateMeal(id: number, input: UpdateMealInput): Promise<MealWithItems> {
+  const res = await authedFetch(`/v1/meals/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH /v1/meals/${id} failed: ${res.status}`);
+  }
+  return (await res.json()) as MealWithItems;
+}
+
+/** DELETE /v1/meals/:id: 論理削除する。 */
+export async function deleteMeal(id: number): Promise<void> {
+  const res = await authedFetch(`/v1/meals/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(`DELETE /v1/meals/${id} failed: ${res.status}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// サマリー (PLAN.md §4.3 / §4.5 M4)
+// ---------------------------------------------------------------------------
+
+export interface DailyTotals {
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+}
+
+export interface DailySummary {
+  date: string;
+  totals: DailyTotals;
+  goal: GoalRow | null;
+}
+
+/** GET /v1/summary/daily?date=YYYY-MM-DD: 当日のmeals合計+有効なgoal。 */
+export async function getDailySummary(date: string): Promise<DailySummary> {
+  const res = await authedFetch(`/v1/summary/daily?date=${encodeURIComponent(date)}`);
+  if (!res.ok) {
+    throw new Error(`GET /v1/summary/daily failed: ${res.status}`);
+  }
+  return (await res.json()) as DailySummary;
+}
+
+export interface WeeklyDaySummary {
+  date: string;
+  totals: DailyTotals | null;
+  goal: { targetKcal: number; targetProteinG: number; targetFatG: number; targetCarbsG: number } | null;
+  achieved: boolean;
+}
+
+export interface WeeklySummary {
+  start: string;
+  days: WeeklyDaySummary[];
+  averages: DailyTotals;
+  achievedDays: number;
+  recordedDays: number;
+}
+
+/** GET /v1/summary/weekly?start=YYYY-MM-DD: 7日分の日別合計・平均PFC・達成率。 */
+export async function getWeeklySummary(start: string): Promise<WeeklySummary> {
+  const res = await authedFetch(`/v1/summary/weekly?start=${encodeURIComponent(start)}`);
+  if (!res.ok) {
+    throw new Error(`GET /v1/summary/weekly failed: ${res.status}`);
+  }
+  return (await res.json()) as WeeklySummary;
 }
