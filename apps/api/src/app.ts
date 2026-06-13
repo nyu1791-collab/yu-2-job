@@ -4,6 +4,7 @@ import { analyzeRoute } from "./routes/analyze.js";
 import { authRoute } from "./routes/auth.js";
 import { mealsRoute } from "./routes/meals.js";
 import { meRoute } from "./routes/me.js";
+import { summaryRoute } from "./routes/summary.js";
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -14,6 +15,7 @@ export function createApp(): Hono {
   app.route("/", meRoute);
   app.route("/", analyzeRoute);
   app.route("/", mealsRoute);
+  app.route("/", summaryRoute);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
