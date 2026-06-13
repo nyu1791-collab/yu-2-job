@@ -1,8 +1,10 @@
 /**
- * 食事記録API(PLAN.md §4.3 / §4.5 — M2/M3)。
+ * 食事記録API(PLAN.md §4.3 / §4.5 — M2/M3/M4)。
  *
- * POST /v1/meals: analysisLogId + 編集後items を meals/meal_items に保存する。
- * GET  /v1/meals?date=YYYY-MM-DD: 指定日(Asia/Tokyo の DATE)のmealsを取得する。
+ * POST   /v1/meals: analysisLogId + 編集後items を meals/meal_items に保存する。
+ * GET    /v1/meals?date=YYYY-MM-DD: 指定日(Asia/Tokyo の DATE)のmealsを取得する。
+ * PATCH  /v1/meals/:id: items差し替え・meal_type/eaten_at変更。totalsはサーバ側で再計算する。
+ * DELETE /v1/meals/:id: 論理削除(deleted_at設定)。
  *
  * 認証: requireAuth()(自前JWT or devトークン)。user_idは認証済みユーザーのID。
  * DB未設定(DATABASE_URLなし・非テスト環境)の場合は503(DB機能未提供)を返す。
@@ -41,6 +43,26 @@ const CreateMealSchema = z.object({
 });
 
 const DATE_QUERY_SCHEMA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * PATCH /v1/meals/:id のリクエストボディ。
+ *
+ * - items を指定した場合: meal_items を全差し替えし、totalsをサーバ側で再計算する。
+ * - mealType / eatenAt / eatenOn は個別に指定可能(未指定の項目は変更しない)。
+ * - 少なくとも1項目の指定が必要。
+ */
+const UpdateMealSchema = z
+  .object({
+    eatenOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD形式で指定してください。").optional(),
+    eatenAt: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "HH:mm または HH:mm:ss形式で指定してください。").optional(),
+    mealType: z.enum(["breakfast", "lunch", "dinner", "snack", "unknown"]).optional(),
+    items: z.array(MealItemSchema).min(1).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "更新する項目を1つ以上指定してください。",
+  });
+
+const ID_PARAM_SCHEMA = z.coerce.number().int().positive();
 
 function dbUnavailableResponse(c: import("hono").Context) {
   return c.json(
@@ -171,4 +193,178 @@ mealsRoute.get("/v1/meals", requireAuth(), async (c) => {
   }
 
   return c.json({ meals: results }, 200);
+});
+
+/**
+ * GET /v1/meals/:id
+ * 1件のmeal + meal_itemsを返す。論理削除済み・他ユーザーのmealは404。
+ */
+mealsRoute.get("/v1/meals/:id", requireAuth(), async (c) => {
+  if (!isDbConfigured()) {
+    return dbUnavailableResponse(c);
+  }
+
+  const userId = getUserId(c);
+
+  const idParseResult = ID_PARAM_SCHEMA.safeParse(c.req.param("id"));
+  if (!idParseResult.success) {
+    return c.json({ error_kind: "invalid_request", message: "idは正の整数で指定してください。" }, 400);
+  }
+  const mealId = idParseResult.data;
+
+  const db = await getDb();
+
+  const mealRows = await db
+    .select()
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.userId, userId)))
+    .limit(1);
+
+  const mealRow = mealRows[0];
+  if (!mealRow || mealRow.deletedAt) {
+    return c.json({ error_kind: "not_found", message: "食事記録が見つかりません。" }, 404);
+  }
+
+  const items = await db
+    .select()
+    .from(mealItems)
+    .where(eq(mealItems.mealId, mealRow.id))
+    .orderBy(mealItems.sortOrder);
+
+  return c.json({ meal: mealRow, items }, 200);
+});
+
+/**
+ * PATCH /v1/meals/:id
+ * {eatenOn?, eatenAt?, mealType?, items?} -> 更新後のmeal + items
+ *
+ * items指定時はmeal_itemsを全差し替えし、totalsをサーバ側で再計算する
+ * (クライアント送信のtotalは信用しない)。
+ * 論理削除済み・他ユーザーのmealは404。
+ */
+mealsRoute.patch("/v1/meals/:id", requireAuth(), async (c) => {
+  if (!isDbConfigured()) {
+    return dbUnavailableResponse(c);
+  }
+
+  const userId = getUserId(c);
+
+  const idParseResult = ID_PARAM_SCHEMA.safeParse(c.req.param("id"));
+  if (!idParseResult.success) {
+    return c.json({ error_kind: "invalid_request", message: "idは正の整数で指定してください。" }, 400);
+  }
+  const mealId = idParseResult.data;
+
+  const body = await c.req.json().catch(() => null);
+  const parseResult = UpdateMealSchema.safeParse(body);
+  if (!parseResult.success) {
+    return c.json({ error_kind: "invalid_request", message: "リクエストボディが不正です。" }, 400);
+  }
+  const { eatenOn, eatenAt, mealType, items } = parseResult.data;
+
+  const db = await getDb();
+
+  const mealRows = await db
+    .select()
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.userId, userId)))
+    .limit(1);
+
+  const existingMeal = mealRows[0];
+  if (!existingMeal || existingMeal.deletedAt) {
+    return c.json({ error_kind: "not_found", message: "食事記録が見つかりません。" }, 404);
+  }
+
+  const updates: Partial<typeof meals.$inferInsert> = {};
+  if (eatenOn !== undefined) updates.eatenOn = eatenOn;
+  if (eatenAt !== undefined) updates.eatenAt = eatenAt;
+  if (mealType !== undefined) updates.mealType = mealType;
+
+  if (items !== undefined) {
+    const total = items.reduce(
+      (sum, item) => ({
+        kcal: sum.kcal + item.kcal,
+        protein_g: sum.protein_g + item.protein_g,
+        fat_g: sum.fat_g + item.fat_g,
+        carbs_g: sum.carbs_g + item.carbs_g,
+      }),
+      { kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
+    );
+    updates.totalKcal = total.kcal;
+    updates.totalProteinG = total.protein_g;
+    updates.totalFatG = total.fat_g;
+    updates.totalCarbsG = total.carbs_g;
+
+    // meal_itemsを全差し替え
+    await db.delete(mealItems).where(eq(mealItems.mealId, mealId));
+
+    const itemRows = items.map((item, index) => ({
+      mealId,
+      name: item.name,
+      grams: item.grams,
+      kcal: item.kcal,
+      proteinG: item.protein_g,
+      fatG: item.fat_g,
+      carbsG: item.carbs_g,
+      confidence: item.confidence,
+      corrected: item.corrected ?? false,
+      foodDbId: item.food_db_id ?? null,
+      userEdited: item.user_edited ?? true,
+      sortOrder: item.sort_order ?? index,
+    }));
+    await db.insert(mealItems).values(itemRows);
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(meals).set(updates).where(eq(meals.id, mealId));
+  }
+
+  const updatedMealRows = await db.select().from(meals).where(eq(meals.id, mealId)).limit(1);
+  const updatedMeal = updatedMealRows[0];
+  if (!updatedMeal) {
+    return c.json({ error_kind: "error", message: "meal更新に失敗しました。" }, 500);
+  }
+
+  const updatedItems = await db
+    .select()
+    .from(mealItems)
+    .where(eq(mealItems.mealId, mealId))
+    .orderBy(mealItems.sortOrder);
+
+  return c.json({ meal: updatedMeal, items: updatedItems }, 200);
+});
+
+/**
+ * DELETE /v1/meals/:id
+ * 論理削除(deleted_atを設定)。論理削除済み・他ユーザーのmealは404。
+ */
+mealsRoute.delete("/v1/meals/:id", requireAuth(), async (c) => {
+  if (!isDbConfigured()) {
+    return dbUnavailableResponse(c);
+  }
+
+  const userId = getUserId(c);
+
+  const idParseResult = ID_PARAM_SCHEMA.safeParse(c.req.param("id"));
+  if (!idParseResult.success) {
+    return c.json({ error_kind: "invalid_request", message: "idは正の整数で指定してください。" }, 400);
+  }
+  const mealId = idParseResult.data;
+
+  const db = await getDb();
+
+  const mealRows = await db
+    .select()
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.userId, userId)))
+    .limit(1);
+
+  const existingMeal = mealRows[0];
+  if (!existingMeal || existingMeal.deletedAt) {
+    return c.json({ error_kind: "not_found", message: "食事記録が見つかりません。" }, 404);
+  }
+
+  await db.update(meals).set({ deletedAt: new Date() }).where(eq(meals.id, mealId));
+
+  return c.json({ ok: true }, 200);
 });
