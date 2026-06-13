@@ -2,7 +2,6 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   type MealItemRow,
   type MealWithItems,
 } from "../../src/lib/api-client";
+import { showAlert } from "../../src/lib/alert";
 
 /**
  * meal/[id].tsx — 食事詳細・編集(M4)。
@@ -91,7 +91,7 @@ export default function MealDetailScreen() {
   async function handleSave(): Promise<void> {
     if (!data) return;
     if (items.length === 0) {
-      Alert.alert("エラー", "少なくとも1つの食品が必要です。");
+      showAlert("エラー", "少なくとも1つの食品が必要です。");
       return;
     }
 
@@ -125,10 +125,10 @@ export default function MealDetailScreen() {
           original: item,
         })),
       );
-      Alert.alert("保存しました");
+      showAlert("保存しました");
     } catch (err) {
       console.error("食事の更新に失敗しました:", err);
-      Alert.alert("エラー", "保存に失敗しました。もう一度お試しください。");
+      showAlert("エラー", "保存に失敗しました。もう一度お試しください。");
     } finally {
       setSaving(false);
     }
@@ -136,7 +136,7 @@ export default function MealDetailScreen() {
 
   function handleDelete(): void {
     if (!data) return;
-    Alert.alert("この記録を削除しますか?", "この操作は取り消せません。", [
+    showAlert("この記録を削除しますか?", "この操作は取り消せません。", [
       { text: "キャンセル", style: "cancel" },
       {
         text: "削除する",
@@ -147,7 +147,7 @@ export default function MealDetailScreen() {
             router.back();
           } catch (err) {
             console.error("食事の削除に失敗しました:", err);
-            Alert.alert("エラー", "削除に失敗しました。もう一度お試しください。");
+            showAlert("エラー", "削除に失敗しました。もう一度お試しください。");
           }
         },
       },

@@ -3,7 +3,7 @@ import * as Google from "expo-auth-session/providers/google";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   getDevToken,
   signInWithApple,
@@ -12,6 +12,7 @@ import {
   updateRcAppUserId,
   type AuthResponse,
 } from "../../src/lib/api-client";
+import { showAlert } from "../../src/lib/alert";
 import { setAuthTokens } from "../../src/lib/auth-store";
 import { useGoalStore } from "../../src/lib/goal-store";
 import { logInRevenueCat } from "../../src/lib/purchases";
@@ -71,14 +72,14 @@ function GoogleSignInButton({
       }
       const idToken = result.params["id_token"];
       if (!idToken) {
-        Alert.alert("サインインに失敗しました", "id_tokenが取得できませんでした。");
+        showAlert("サインインに失敗しました", "id_tokenが取得できませんでした。");
         return;
       }
       const response = await signInWithGoogle(idToken);
       await onSignedIn(response);
     } catch (err) {
       console.error(err);
-      Alert.alert("サインインに失敗しました", "もう一度お試しください。");
+      showAlert("サインインに失敗しました", "もう一度お試しください。");
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +104,7 @@ export default function SignInScreen() {
 
   async function finishSignIn(response: AuthResponse) {
     if (!response.ok) {
-      Alert.alert("サインインに失敗しました", response.message);
+      showAlert("サインインに失敗しました", response.message);
       return;
     }
 
@@ -170,7 +171,7 @@ export default function SignInScreen() {
         ],
       });
       if (!credential.identityToken) {
-        Alert.alert("サインインに失敗しました", "identityTokenが取得できませんでした。");
+        showAlert("サインインに失敗しました", "identityTokenが取得できませんでした。");
         return;
       }
       const response = await signInWithApple(credential.identityToken);
@@ -181,7 +182,7 @@ export default function SignInScreen() {
         return;
       }
       console.error(err);
-      Alert.alert("サインインに失敗しました", "もう一度お試しください。");
+      showAlert("サインインに失敗しました", "もう一度お試しください。");
     } finally {
       setIsLoading(false);
     }
@@ -196,7 +197,7 @@ export default function SignInScreen() {
   async function handleDevTokenSkip() {
     const devToken = getDevToken();
     if (!devToken) {
-      Alert.alert(
+      showAlert(
         "devトークンが設定されていません",
         "EXPO_PUBLIC_DEV_TOKEN を .env に設定してください。",
       );

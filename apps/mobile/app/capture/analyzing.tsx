@@ -1,9 +1,10 @@
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { analyzePhoto, type AnalyzeResponse } from "../../src/lib/api-client";
 import { clearPendingImage, getPendingImage } from "../../src/lib/pending-image-store";
 import { setLastAnalysis } from "../../src/lib/analysis-store";
+import { showAlert } from "../../src/lib/alert";
 
 /**
  * capture/analyzing.tsx
@@ -37,7 +38,7 @@ export default function AnalyzingScreen() {
       const pending = getPendingImage();
       if (!pending) {
         if (!cancelled) {
-          Alert.alert("エラー", "解析する画像が見つかりませんでした。");
+          showAlert("エラー", "解析する画像が見つかりませんでした。");
           router.replace("/capture/camera");
         }
         return;
@@ -53,7 +54,7 @@ export default function AnalyzingScreen() {
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          Alert.alert("エラー", "解析リクエストに失敗しました。もう一度お試しください。");
+          showAlert("エラー", "解析リクエストに失敗しました。もう一度お試しください。");
           router.replace("/capture/camera");
         }
         return;
@@ -68,7 +69,7 @@ export default function AnalyzingScreen() {
       if (!response.ok) {
         clearPendingImage();
         if (response.error_kind === "not_food") {
-          Alert.alert(
+          showAlert(
             "食事が写っていないようです",
             "再撮影するか、手動で入力してください。",
             [{ text: "OK", onPress: () => router.replace("/capture/camera") }],
@@ -76,7 +77,7 @@ export default function AnalyzingScreen() {
           return;
         }
         if (response.error_kind === "parse_failed") {
-          Alert.alert(
+          showAlert(
             "うまく解析できませんでした",
             "再試行するか、手動で入力してください。",
             [{ text: "OK", onPress: () => router.replace("/capture/camera") }],
@@ -85,7 +86,7 @@ export default function AnalyzingScreen() {
         }
         if (response.error_kind === "rate_limited") {
           const remaining = response.remaining ?? 0;
-          Alert.alert(
+          showAlert(
             "本日の解析上限に達しました",
             `本日analyzeできる残り回数は${remaining}回です。プランのアップグレードをご検討ください。`,
             [{ text: "OK", onPress: () => router.replace("/capture/camera") }],
@@ -94,14 +95,14 @@ export default function AnalyzingScreen() {
         }
 
         if (response.error_kind === "subscription_required") {
-          Alert.alert(
+          showAlert(
             "プランへの登録が必要です",
             "この機能を利用するには、プランへの登録(7日間無料トライアル)が必要です。",
             [{ text: "OK", onPress: () => router.replace("/(onboarding)/paywall") }],
           );
           return;
         }
-        Alert.alert("エラー", response.message, [
+        showAlert("エラー", response.message, [
           { text: "OK", onPress: () => router.replace("/capture/camera") },
         ]);
         return;

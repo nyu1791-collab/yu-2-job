@@ -2,9 +2,10 @@ import { CameraView, useCameraPermissions, type CameraCapturedPicture } from "ex
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { resizeForUpload } from "../../src/lib/image-processing";
 import { setPendingImage } from "../../src/lib/pending-image-store";
+import { showAlert } from "../../src/lib/alert";
 
 /**
  * capture/camera.tsx
@@ -61,7 +62,7 @@ export default function CameraScreen() {
 
   async function handleCaptured(picture: CameraCapturedPicture) {
     if (!picture.width || !picture.height) {
-      Alert.alert("エラー", "画像サイズの取得に失敗しました。");
+      showAlert("エラー", "画像サイズの取得に失敗しました。");
       return;
     }
     const resized = await resizeForUpload(picture.uri, picture.width, picture.height);
@@ -79,7 +80,7 @@ export default function CameraScreen() {
       }
     } catch (err) {
       console.error(err);
-      Alert.alert("エラー", "撮影に失敗しました。もう一度お試しください。");
+      showAlert("エラー", "撮影に失敗しました。もう一度お試しください。");
     } finally {
       setIsCapturing(false);
     }

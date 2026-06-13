@@ -1,7 +1,8 @@
 import type { ActivityLevel, Sex } from "@pashacaro/shared";
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { showAlert } from "../../../src/lib/alert";
 import { isDraftComplete, setGoalProfile, useGoalStore } from "../../../src/lib/goal-store";
 
 /**
@@ -43,19 +44,19 @@ export default function GoalStep2Screen() {
     const weightNum = Number(weightKg);
 
     if (!sex || !activityLevel || !age || !heightCm || !weightKg) {
-      Alert.alert("入力エラー", "すべての項目を入力してください。");
+      showAlert("入力エラー", "すべての項目を入力してください。");
       return;
     }
     if (!Number.isFinite(ageNum) || ageNum <= 0 || ageNum > 120) {
-      Alert.alert("入力エラー", "年齢を正しく入力してください。");
+      showAlert("入力エラー", "年齢を正しく入力してください。");
       return;
     }
     if (!Number.isFinite(heightNum) || heightNum <= 0 || heightNum > 300) {
-      Alert.alert("入力エラー", "身長を正しく入力してください。");
+      showAlert("入力エラー", "身長を正しく入力してください。");
       return;
     }
     if (!Number.isFinite(weightNum) || weightNum <= 0 || weightNum > 500) {
-      Alert.alert("入力エラー", "体重を正しく入力してください。");
+      showAlert("入力エラー", "体重を正しく入力してください。");
       return;
     }
 
@@ -63,7 +64,7 @@ export default function GoalStep2Screen() {
 
     const next = { ...draft, sex, age: ageNum, heightCm: heightNum, weightKg: weightNum, activityLevel };
     if (!isDraftComplete(next)) {
-      Alert.alert("入力エラー", "入力内容を確認してください。");
+      showAlert("入力エラー", "入力内容を確認してください。");
       return;
     }
 

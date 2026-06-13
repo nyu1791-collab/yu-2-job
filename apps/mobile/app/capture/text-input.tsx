@@ -1,8 +1,9 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { analyzeText } from "../../src/lib/api-client";
 import { setLastAnalysis } from "../../src/lib/analysis-store";
+import { showAlert } from "../../src/lib/alert";
 
 /**
  * capture/text-input.tsx
@@ -18,7 +19,7 @@ export default function TextInputScreen() {
   async function handleSubmit(): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed) {
-      Alert.alert("入力してください", "食事の内容を入力してください。");
+      showAlert("入力してください", "食事の内容を入力してください。");
       return;
     }
 
@@ -28,26 +29,26 @@ export default function TextInputScreen() {
 
       if (!response.ok) {
         if (response.error_kind === "not_food") {
-          Alert.alert("食事の内容が確認できませんでした", "別の表現で入力してみてください。");
+          showAlert("食事の内容が確認できませんでした", "別の表現で入力してみてください。");
           return;
         }
         if (response.error_kind === "rate_limited") {
           const remaining = response.remaining ?? 0;
-          Alert.alert(
+          showAlert(
             "本日の解析上限に達しました",
             `本日analyzeできる残り回数は${remaining}回です。プランのアップグレードをご検討ください。`,
           );
           return;
         }
         if (response.error_kind === "subscription_required") {
-          Alert.alert(
+          showAlert(
             "プランへの登録が必要です",
             "この機能を利用するには、プランへの登録(7日間無料トライアル)が必要です。",
             [{ text: "OK", onPress: () => router.replace("/(onboarding)/paywall") }],
           );
           return;
         }
-        Alert.alert("エラー", response.message);
+        showAlert("エラー", response.message);
         return;
       }
 
@@ -55,7 +56,7 @@ export default function TextInputScreen() {
       router.replace("/capture/result");
     } catch (err) {
       console.error("テキスト解析に失敗しました:", err);
-      Alert.alert("エラー", "解析リクエストに失敗しました。もう一度お試しください。");
+      showAlert("エラー", "解析リクエストに失敗しました。もう一度お試しください。");
     } finally {
       setSubmitting(false);
     }

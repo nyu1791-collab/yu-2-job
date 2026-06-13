@@ -1,9 +1,10 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { clearAuthTokens, useAuthState } from "../../src/lib/auth-store";
 import { getMe, getMyGoal, type GoalRow, type MeProfile } from "../../src/lib/api-client";
 import { getNotificationsEnabled, setNotificationsEnabled, syncMealReminders } from "../../src/lib/notifications";
+import { showAlert } from "../../src/lib/alert";
 
 const GOAL_TYPE_LABELS: Record<GoalRow["goalType"], string> = {
   cut: "減量",
@@ -53,7 +54,7 @@ export default function SettingsScreen() {
       const applied = await setNotificationsEnabled(value);
       setNotificationsEnabledState(applied);
       if (value && !applied) {
-        Alert.alert(
+        showAlert(
           "通知が許可されていません",
           "端末の設定アプリから通知を許可してください。",
         );
@@ -61,7 +62,7 @@ export default function SettingsScreen() {
       await syncMealReminders();
     } catch (err) {
       console.error("通知設定の更新に失敗しました:", err);
-      Alert.alert("通知設定の更新に失敗しました。");
+      showAlert("通知設定の更新に失敗しました。");
     } finally {
       setNotificationsBusy(false);
     }
@@ -78,7 +79,7 @@ export default function SettingsScreen() {
   }
 
   function handleLogout(): void {
-    Alert.alert("ログアウトしますか?", undefined, [
+    showAlert("ログアウトしますか?", undefined, [
       { text: "キャンセル", style: "cancel" },
       {
         text: "ログアウト",

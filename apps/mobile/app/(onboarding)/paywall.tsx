@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import {
   getCurrentOffering,
@@ -8,6 +8,7 @@ import {
   purchasePackage,
   restorePurchases,
 } from "../../src/lib/purchases";
+import { showAlert } from "../../src/lib/alert";
 import { fetchEntitlement } from "../../src/lib/auth-store";
 
 /**
@@ -69,7 +70,7 @@ export default function PaywallScreen() {
         return;
       }
       if (!result.ok) {
-        Alert.alert("購入に失敗しました", result.message ?? "もう一度お試しください。");
+        showAlert("購入に失敗しました", result.message ?? "もう一度お試しください。");
         return;
       }
       await goToHomeAfterEntitlementCheck();
@@ -83,7 +84,7 @@ export default function PaywallScreen() {
     try {
       const result = await restorePurchases();
       if (!result.ok || !result.entitled) {
-        Alert.alert("復元できる購入が見つかりませんでした", "購入済みの場合は同じApple ID/Googleアカウントでお試しください。");
+        showAlert("復元できる購入が見つかりませんでした", "購入済みの場合は同じApple ID/Googleアカウントでお試しください。");
         return;
       }
       await goToHomeAfterEntitlementCheck();

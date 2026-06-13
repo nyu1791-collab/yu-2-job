@@ -1,10 +1,11 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { nowTimeInTokyo, scalePortion, todayInTokyo, PORTION_SCALE_MAX, PORTION_SCALE_MIN } from "@pashacaro/shared";
 import type { Analysis, CorrectedAnalysis, Dish } from "@pashacaro/shared";
 import { createMeal, type MealItemPayload } from "../../src/lib/api-client";
 import { setLastAnalysis, useAnalysisStore, type StoredAnalysis } from "../../src/lib/analysis-store";
+import { showAlert } from "../../src/lib/alert";
 
 /**
  * capture/result.tsx
@@ -163,7 +164,7 @@ export default function ResultScreen() {
       router.replace("/(tabs)");
     } catch (err) {
       console.error("食事の記録に失敗しました:", err);
-      Alert.alert("エラー", "記録に失敗しました。もう一度お試しください。");
+      showAlert("エラー", "記録に失敗しました。もう一度お試しください。");
     } finally {
       setSaving(false);
     }
