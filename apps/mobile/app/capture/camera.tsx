@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions, type CameraCapturedPicture } from "ex
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { resizeForUpload } from "../../src/lib/image-processing";
 import { setPendingImage } from "../../src/lib/pending-image-store";
 
@@ -17,6 +17,29 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isCapturing, setIsCapturing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+
+  // Web(ブラウザ): ライブカメラ(CameraView)はiOS Safariで権限プロンプトが
+  // すぐ消える等で不安定なため使わず、OSの写真ダイアログ(撮影/ライブラリ選択)に
+  // 統一する。expo-image-picker はWebでファイル選択(iOSではその場で撮影も選べる)を開く。
+  if (Platform.OS === "web") {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.message}>食事の写真を撮るか、ライブラリから選んでください。</Text>
+        <Pressable style={styles.primaryButton} onPress={handlePickFromLibrary}>
+          <Text style={styles.primaryButtonText}>写真を撮る / 選ぶ</Text>
+        </Pressable>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => router.push("/capture/text-input")}
+        >
+          <Text style={styles.secondaryButtonText}>✎ テキストで入力</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+          <Text style={styles.secondaryButtonText}>戻る</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (!permission) {
     return <View style={styles.container} />;
