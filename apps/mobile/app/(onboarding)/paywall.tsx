@@ -11,7 +11,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
  */
 export default function PaywallScreen() {
   function handleSkip() {
-    router.replace("/");
+    router.replace("/(tabs)");
   }
 
   return (

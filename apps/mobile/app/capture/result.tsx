@@ -1,14 +1,10 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { scalePortion, PORTION_SCALE_MAX, PORTION_SCALE_MIN } from "@pashacaro/shared";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { nowTimeInTokyo, scalePortion, todayInTokyo, PORTION_SCALE_MAX, PORTION_SCALE_MIN } from "@pashacaro/shared";
 import type { Analysis, CorrectedAnalysis, Dish } from "@pashacaro/shared";
-import {
-  recordMeal,
-  setLastAnalysis,
-  useAnalysisStore,
-  type StoredAnalysis,
-} from "../../src/lib/analysis-store";
+import { createMeal, type MealItemPayload } from "../../src/lib/api-client";
+import { setLastAnalysis, useAnalysisStore, type StoredAnalysis } from "../../src/lib/analysis-store";
 
 /**
  * capture/result.tsx
@@ -17,7 +13,7 @@ import {
  * - dishごとのPFC/kcal/confidenceバッジ
  * - 分量スライダー(0.5x〜2.0x、ステップ0.1)で線形再計算(sharedの scalePortion を使用)
  * - 料理名修正(タップでテキスト入力に切り替え)
- * - 「記録する」でローカルstateに保存しホームへ戻る
+ * - 「記録する」で POST /v1/meals に保存し、ホーム((tabs))へ戻る
  */
 
 const PORTION_STEP = 0.1;
@@ -57,7 +53,7 @@ function confidenceLabel(confidence: number): { text: string; style: "high" | "m
 }
 
 export default function ResultScreen() {
-  const { lastAnalysis } = useAnalysisStore();
+  const { lastAnalysis, lastAnalysisLogId, lastAnalysisSource } = useAnalysisStore();
 
   const initialDishes = lastAnalysis?.dishes ?? [];
 
@@ -67,6 +63,7 @@ export default function ResultScreen() {
   const [names, setNames] = useState<string[]>(() => initialDishes.map((d) => d.name));
   // 編集中のdish index
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const hasLowConfidence = initialDishes.some((d) => d.confidence < 0.5);
 
@@ -94,7 +91,7 @@ export default function ResultScreen() {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>解析結果がありません。</Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.replace("/")}>
+        <Pressable style={styles.primaryButton} onPress={() => router.replace("/(tabs)")}>
           <Text style={styles.primaryButtonText}>ホームへ戻る</Text>
         </Pressable>
       </View>
@@ -120,25 +117,56 @@ export default function ResultScreen() {
     });
   }
 
-  function handleRecord(): void {
+  async function handleRecord(): Promise<void> {
     const recordedAnalysis = {
       ...lastAnalysis,
       dishes: scaledDishes,
       total,
     } as StoredAnalysis;
 
-    recordMeal({
-      id: `${Date.now()}`,
-      recordedAt: new Date().toISOString(),
-      analysis: recordedAnalysis,
-      portionScales: scales,
+    const items: MealItemPayload[] = scaledDishes.map((dish, i) => {
+      const corrected = "corrected" in dish ? Boolean((dish as { corrected?: boolean }).corrected) : false;
+      const matchedProductId =
+        "matched_product_id" in dish
+          ? ((dish as { matched_product_id?: number | null }).matched_product_id ?? null)
+          : null;
+      return {
+        name: dish.name,
+        grams: dish.estimated_grams,
+        kcal: dish.kcal,
+        protein_g: dish.protein_g,
+        fat_g: dish.fat_g,
+        carbs_g: dish.carbs_g,
+        confidence: dish.confidence,
+        corrected,
+        food_db_id: matchedProductId,
+        user_edited: names[i] !== initialDishes[i]?.name || (scales[i] ?? 1) !== 1,
+        sort_order: i,
+      };
     });
 
-    setLastAnalysis(recordedAnalysis);
+    const mealType = lastAnalysis?.meal_type ?? "unknown";
 
-    Alert.alert("記録しました", "ホーム画面に戻ります。", [
-      { text: "OK", onPress: () => router.replace("/") },
-    ]);
+    setSaving(true);
+    try {
+      await createMeal({
+        analysisLogId: lastAnalysisLogId,
+        eatenOn: todayInTokyo(),
+        eatenAt: nowTimeInTokyo(),
+        mealType,
+        source: lastAnalysisSource ?? "photo",
+        items,
+      });
+
+      setLastAnalysis(recordedAnalysis);
+
+      router.replace("/(tabs)");
+    } catch (err) {
+      console.error("食事の記録に失敗しました:", err);
+      Alert.alert("エラー", "記録に失敗しました。もう一度お試しください。");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -230,11 +258,23 @@ export default function ResultScreen() {
         );
       })}
 
-      <Pressable style={styles.recordButton} onPress={handleRecord}>
-        <Text style={styles.recordButtonText}>記録する</Text>
+      <Pressable
+        style={[styles.recordButton, saving && styles.buttonDisabled]}
+        onPress={handleRecord}
+        disabled={saving}
+      >
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.recordButtonText}>記録する</Text>
+        )}
       </Pressable>
 
-      <Pressable style={styles.secondaryButton} onPress={() => router.replace("/capture/camera")}>
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={() => router.replace("/capture/camera")}
+        disabled={saving}
+      >
         <Text style={styles.secondaryButtonText}>もう一度撮影する</Text>
       </Pressable>
     </ScrollView>
@@ -419,6 +459,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "700",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   primaryButton: {
     backgroundColor: "#0a7ea4",
