@@ -9,6 +9,7 @@
   "scripts": {
     "check-cache": "tsx check-cache.ts",
     "ingest-mext": "tsx ingest-mext.ts",
+    "eval": "tsx eval.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
