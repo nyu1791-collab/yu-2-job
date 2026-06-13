@@ -54,7 +54,8 @@ export default function AnalyzingScreen() {
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          showAlert("エラー", "解析リクエストに失敗しました。もう一度お試しください。");
+          const detail = err instanceof Error ? err.message : String(err);
+          showAlert("エラー", `解析リクエストに失敗しました。もう一度お試しください。\n\n(詳細: ${detail})`);
           router.replace("/capture/camera");
         }
         return;
