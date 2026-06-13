@@ -180,3 +180,78 @@ TODOコメント参照)。
 
 実APIキー・実機・Neon・実画像が揃った環境で、上記「既知の制限」に該当する
 項目を追加で検証してください。
+
+## Webデモ版をVercelで自分のスマホ(Safari)で試す方法
+
+`apps/mobile` はExpo Router製のアプリですが、Web向けにビルドして
+(`expo export -p web`)、静的なWebサイトとしてVercelにデプロイできます。
+これを使うと、実機ビルド(EAS Build)やApp Store配布なしに、
+iPhoneのSafariなどから**アプリの見た目・画面遷移を確認するデモ**を
+公開できます。
+
+以下は非エンジニアの方でも実施できる手順です。
+
+### 手順
+
+1. **Vercelにログイン**
+   - https://vercel.com/ を開き、「Continue with GitHub」でGitHubアカウント
+     (このリポジトリにアクセスできるアカウント)でログインします。
+
+2. **新しいプロジェクトを作成**
+   - ダッシュボードで「Add New...」→「Project」を選択します。
+   - リポジトリ一覧から `nyu1791-collab/yu-2-job` を選び、「Import」します。
+
+3. **Root Directoryを `apps/mobile` に設定**
+   - インポート設定画面で「Root Directory」の項目にある「Edit」リンクを
+     クリックし、`apps/mobile` を選択(または入力)します。
+   - これにより、Vercelはこのモノレポの中の `apps/mobile` ディレクトリを
+     プロジェクトのルートとして扱います(`apps/mobile/vercel.json` の
+     ビルド設定が使われます)。
+
+4. **Framework Presetはそのまま**
+   - 「Framework Preset」は自動検出されますが、特に変更せず
+     「Other」のままで問題ありません(ビルドコマンドは
+     `apps/mobile/vercel.json` で明示的に指定されています)。
+
+5. **環境変数を設定する(重要)**
+   - 「Environment Variables」セクションで、以下を追加します。
+     - `EXPO_PUBLIC_API_URL` : バックエンドAPI(`apps/api`)のURL
+       (例: `https://your-api.example.com`)
+     - `EXPO_PUBLIC_DEV_TOKEN` : `apps/api` 側の `DEV_TOKEN` と
+       同じ値(開発用の「devトークンでスキップ」サインインに使います)
+   - **注意**: これらはバックエンドAPI(`apps/api`)が別途デプロイされて
+     稼働している必要があります。現時点では `apps/api` のVercelデプロイは
+     未実施のため、上記の環境変数を設定しても、**サインインや写真AI解析など
+     バックエンド連携が必要な機能はまだ動作しません**。
+   - APIサーバーが未デプロイの状態でも、`EXPO_PUBLIC_API_URL` /
+     `EXPO_PUBLIC_DEV_TOKEN` を**仮の値で設定しておけばビルド自体は成功**し、
+     アプリの起動画面・オンボーディング画面などの**フロントエンドのUI/見た目**は
+     確認できます。
+
+6. **Deployして、iPhoneのSafariで開く**
+   - 「Deploy」ボタンを押すと数分でビルドが完了し、
+     `https://<プロジェクト名>.vercel.app` のようなURLが発行されます。
+   - そのURLをiPhoneのSafariで開くと、アプリの画面をブラウザ上で
+     確認できます。
+
+### 現時点での制限事項
+
+このWebデモは「フロントエンドのUI/見た目だけを確認するデモ」であり、
+以下の点に注意してください。
+
+- **バックエンドAPI(`apps/api`)が別途デプロイされていないと**、
+  サインイン後のホーム画面・食事記録・AI解析などのデータ連携機能は
+  動作しません(オンボーディングや画面遷移などの見た目は確認できます)。
+- **Apple/Googleサインインは動作しません**(Apple Sign Inは元々iOS専用、
+  GoogleサインインもWeb向けのOAuthクライアントID設定が別途必要です)。
+  開発用の「devトークンでスキップ」ボタン(`EXPO_PUBLIC_DEV_TOKEN` 設定時に
+  表示)で代替してください。
+- **RevenueCatによる課金(購入・復元)はWeb版では利用できません**。
+  paywall画面には「デモ版(Web)では購入機能は利用できません」という
+  案内が表示され、続行ボタンでホーム画面へ進めます。
+- カメラ機能はブラウザの `getUserMedia`(カメラ・写真ライブラリへの
+  アクセス許可)を使って動作しますが、Safariの権限設定によっては
+  許可が必要です。
+
+実際にAI解析・記録保存などのフルの機能を試すには、`apps/api` の
+Vercel(または他のホスティング)へのデプロイが別途必要です。
