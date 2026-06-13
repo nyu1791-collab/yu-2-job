@@ -93,6 +93,9 @@ export default function CameraScreen() {
           <Text style={styles.secondaryButtonText}>キャンセル</Text>
         </Pressable>
       </View>
+      <Pressable style={styles.textInputLink} onPress={() => router.push("/capture/text-input")}>
+        <Text style={styles.textInputLinkText}>✎ テキストで入力</Text>
+      </Pressable>
     </View>
   );
 }
@@ -162,5 +165,19 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: "#fff",
     fontSize: 14,
+  },
+  textInputLink: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  textInputLinkText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

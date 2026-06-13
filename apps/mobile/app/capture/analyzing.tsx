@@ -95,7 +95,7 @@ export default function AnalyzingScreen() {
         return;
       }
 
-      setLastAnalysis(response.analysis);
+      setLastAnalysis(response.analysis, { analysisLogId: response.analysisLogId, source: "photo" });
       clearPendingImage();
       router.replace("/capture/result");
     }

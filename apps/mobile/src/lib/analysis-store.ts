@@ -21,11 +21,17 @@ export interface RecordedMeal {
 
 interface AnalysisStoreState {
   lastAnalysis: StoredAnalysis | null;
+  /** 直前の解析リクエストの analysis_logs.id (POST /v1/meals の analysisLogId に渡す) */
+  lastAnalysisLogId: number | null;
+  /** 直前の解析の入力種別。POST /v1/meals の source に渡す。 */
+  lastAnalysisSource: "photo" | "text" | null;
   recordedMeals: RecordedMeal[];
 }
 
 let state: AnalysisStoreState = {
   lastAnalysis: null,
+  lastAnalysisLogId: null,
+  lastAnalysisSource: null,
   recordedMeals: [],
 };
 
@@ -35,8 +41,16 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
-export function setLastAnalysis(analysis: StoredAnalysis | null): void {
-  state = { ...state, lastAnalysis: analysis };
+export function setLastAnalysis(
+  analysis: StoredAnalysis | null,
+  meta?: { analysisLogId?: number | null; source?: "photo" | "text" | null },
+): void {
+  state = {
+    ...state,
+    lastAnalysis: analysis,
+    lastAnalysisLogId: meta?.analysisLogId ?? (analysis === null ? null : state.lastAnalysisLogId),
+    lastAnalysisSource: meta?.source ?? (analysis === null ? null : state.lastAnalysisSource),
+  };
   emit();
 }
 
@@ -61,6 +75,11 @@ export function useAnalysisStore(): AnalysisStoreState {
 
 /** テスト・開発用にストアをリセットする */
 export function _resetAnalysisStore(): void {
-  state = { lastAnalysis: null, recordedMeals: [] };
+  state = {
+    lastAnalysis: null,
+    lastAnalysisLogId: null,
+    lastAnalysisSource: null,
+    recordedMeals: [],
+  };
   emit();
 }
