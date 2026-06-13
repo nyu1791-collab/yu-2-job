@@ -1,9 +1,10 @@
 import { Redirect, Stack, usePathname } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, AppState, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { getDevToken } from "../src/lib/api-client";
 import { loadAuthFromStorage, useAuthState } from "../src/lib/auth-store";
+import { syncMealReminders } from "../src/lib/notifications";
 
 /**
  * ルートレイアウト(M5版)。
@@ -32,6 +33,19 @@ export default function RootLayout() {
 
   useEffect(() => {
     loadAuthFromStorage();
+  }, []);
+
+  // 食事記録リマインダー(M6): 起動時 + フォアグラウンド復帰時に
+  // 当日の記録状況を確認し、ローカル通知を再スケジュールする。
+  // (ベストエフォート方式。詳細は src/lib/notifications.ts のコメント参照)
+  useEffect(() => {
+    void syncMealReminders();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void syncMealReminders();
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   if (auth.isLoading) {

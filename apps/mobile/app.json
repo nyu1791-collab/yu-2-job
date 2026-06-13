@@ -44,7 +44,8 @@
         {
           "photosPermission": "ライブラリから食事の写真を選択して解析するために使用します。"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,8 +1,9 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { clearAuthTokens, useAuthState } from "../../src/lib/auth-store";
 import { getMe, getMyGoal, type GoalRow, type MeProfile } from "../../src/lib/api-client";
+import { getNotificationsEnabled, setNotificationsEnabled, syncMealReminders } from "../../src/lib/notifications";
 
 const GOAL_TYPE_LABELS: Record<GoalRow["goalType"], string> = {
   cut: "減量",
@@ -23,14 +24,21 @@ export default function SettingsScreen() {
   const [goal, setGoal] = useState<GoalRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(false);
+  const [notificationsBusy, setNotificationsBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, goalRes] = await Promise.all([getMe(), getMyGoal()]);
+      const [profileRes, goalRes, notificationsEnabledRes] = await Promise.all([
+        getMe(),
+        getMyGoal(),
+        getNotificationsEnabled(),
+      ]);
       setProfile(profileRes);
       setGoal(goalRes);
+      setNotificationsEnabledState(notificationsEnabledRes);
     } catch (err) {
       console.error("設定データの取得に失敗しました:", err);
       setError("データの取得に失敗しました。");
@@ -38,6 +46,26 @@ export default function SettingsScreen() {
       setLoading(false);
     }
   }, []);
+
+  async function handleToggleNotifications(value: boolean): Promise<void> {
+    setNotificationsBusy(true);
+    try {
+      const applied = await setNotificationsEnabled(value);
+      setNotificationsEnabledState(applied);
+      if (value && !applied) {
+        Alert.alert(
+          "通知が許可されていません",
+          "端末の設定アプリから通知を許可してください。",
+        );
+      }
+      await syncMealReminders();
+    } catch (err) {
+      console.error("通知設定の更新に失敗しました:", err);
+      Alert.alert("通知設定の更新に失敗しました。");
+    } finally {
+      setNotificationsBusy(false);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -109,6 +137,25 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <Text style={styles.sectionTitle}>通知</Text>
+            <View style={styles.card}>
+              <View style={styles.notificationRow}>
+                <View style={styles.notificationTextContainer}>
+                  <Text style={styles.cardValue}>食事記録のリマインダー</Text>
+                  <Text style={styles.goalMeta}>
+                    記録が無い日は12:30・19:30頃にお知らせします。
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={(value) => void handleToggleNotifications(value)}
+                  disabled={notificationsBusy}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.section}>
             <Pressable style={styles.logoutButton} onPress={handleLogout}>
               <Text style={styles.logoutButtonText}>ログアウト</Text>
             </Pressable>
@@ -172,6 +219,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#888",
     marginTop: 4,
+  },
+  notificationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  notificationTextContainer: {
+    flex: 1,
+    gap: 4,
   },
   actionButton: {
     backgroundColor: "#0a7ea4",
