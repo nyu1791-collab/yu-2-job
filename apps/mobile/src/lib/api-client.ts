@@ -24,6 +24,7 @@ export type AnalyzeErrorKind =
   | "image_too_large"
   | "upstream_unavailable"
   | "rate_limited"
+  | "subscription_required"
   | "invalid_request"
   | "config_error"
   | "http_error"
@@ -45,6 +46,8 @@ export interface AnalyzeSuccess {
   usage: AnalyzeUsage;
   matched_product_id: null;
   analysisLogId: number | null;
+  /** 当日の残り解析回数(レート制限ゲート通過時のみ。DB未設定時はnull) */
+  remaining: number | null;
 }
 
 export interface AnalyzeFailure {
@@ -54,6 +57,8 @@ export interface AnalyzeFailure {
   message: string;
   /** not_food の場合のみ、サーバから返却された解析結果(空dishes)を保持 */
   analysis?: Analysis;
+  /** rate_limited の場合、残り回数(0)を保持 */
+  remaining?: number;
 }
 
 export type AnalyzeResponse = AnalyzeSuccess | AnalyzeFailure;
@@ -152,6 +157,7 @@ async function parseResponse(res: Response): Promise<AnalyzeResponse> {
       },
       matched_product_id: null,
       analysisLogId: body.analysisLogId ?? null,
+      remaining: body.remaining ?? null,
     };
   }
 
@@ -162,6 +168,7 @@ async function parseResponse(res: Response): Promise<AnalyzeResponse> {
     error_kind: (body.error_kind as AnalyzeErrorKind) ?? "error",
     message: body.message ?? "不明なエラーが発生しました。",
     analysis: body.analysis,
+    remaining: typeof body.remaining === "number" ? body.remaining : undefined,
   };
 }
 
@@ -278,6 +285,45 @@ export async function signInWithGoogle(idToken: string): Promise<AuthResponse> {
     body: JSON.stringify({ idToken }),
   });
   return parseAuthResponse(res);
+}
+
+// ---------------------------------------------------------------------------
+// entitlement (PLAN.md §4.5 M5)
+// ---------------------------------------------------------------------------
+
+export interface EntitlementInfo {
+  entitled: boolean;
+  status: "trial" | "active" | "billing_issue" | "expired" | "none";
+  expiresAt: string | null;
+  productId: string | null;
+  entitlement: string | null;
+}
+
+/** GET /v1/me/entitlement: 現在の課金状況を返す。 */
+export async function getEntitlement(): Promise<EntitlementInfo> {
+  const res = await authedFetch("/v1/me/entitlement");
+  if (!res.ok) {
+    throw new Error(`GET /v1/me/entitlement failed: ${res.status}`);
+  }
+  return (await res.json()) as EntitlementInfo;
+}
+
+/**
+ * PUT /v1/me/rc-app-user-id: サインイン後に `Purchases.logIn(userId)` した
+ * RevenueCatのapp_user_idをサーバのusers.rc_app_user_idに同期する。
+ * 戻り値の `appliedPendingEvents` は、サインイン前に届いていたWebhookイベントの
+ * 再適用件数(0より大きい場合、subscriptionsが即時更新されたことを示す)。
+ */
+export async function updateRcAppUserId(rcAppUserId: string): Promise<{ rcAppUserId: string; appliedPendingEvents: number }> {
+  const res = await authedFetch("/v1/me/rc-app-user-id", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rcAppUserId }),
+  });
+  if (!res.ok) {
+    throw new Error(`PUT /v1/me/rc-app-user-id failed: ${res.status}`);
+  }
+  return (await res.json()) as { rcAppUserId: string; appliedPendingEvents: number };
 }
 
 // ---------------------------------------------------------------------------
