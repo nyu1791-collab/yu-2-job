@@ -13,9 +13,8 @@ import {
   runAnalysisPipeline,
   type AnalyzePipelineResult,
 } from "../lib/analyze.js";
-import { requireDevToken } from "../lib/auth.js";
+import { getUserId, requireAuth } from "../lib/auth.js";
 import { getDb, isDbConfigured } from "../db/client.js";
-import { DEV_USER_ID } from "../db/seed.js";
 import { recordAnalysisLog } from "../lib/analysis-logs.js";
 import { buildMatchesForDishes } from "../lib/food-lookup.js";
 
@@ -65,7 +64,9 @@ function buildContext(input: {
  * ミドルウェア順(M1版): devトークン検証 -> 画像サイズ検証(2MB超は413) -> 解析
  * entitlement/レート制限はM5で追加。
  */
-analyzeRoute.post("/v1/analyze", requireDevToken(), async (c) => {
+analyzeRoute.post("/v1/analyze", requireAuth(), async (c) => {
+  const userId = getUserId(c);
+
   const body = await c.req.json().catch(() => null);
   const parseResult = ImageAnalyzeRequestSchema.safeParse(body);
   if (!parseResult.success) {
@@ -95,9 +96,9 @@ analyzeRoute.post("/v1/analyze", requireDevToken(), async (c) => {
       context,
     });
 
-    return await handlePipelineResult(c, result, Date.now() - startedAt);
+    return await handlePipelineResult(c, result, Date.now() - startedAt, userId);
   } catch (err) {
-    return await handlePipelineError(c, err, Date.now() - startedAt);
+    return await handlePipelineError(c, err, Date.now() - startedAt, userId);
   }
 });
 
@@ -105,7 +106,9 @@ analyzeRoute.post("/v1/analyze", requireDevToken(), async (c) => {
  * POST /v1/analyze/text
  * {text, takenAt?} -> Analysis (Haiku固定。systemは同一でキャッシュ共有)
  */
-analyzeRoute.post("/v1/analyze/text", requireDevToken(), async (c) => {
+analyzeRoute.post("/v1/analyze/text", requireAuth(), async (c) => {
+  const userId = getUserId(c);
+
   const body = await c.req.json().catch(() => null);
   const parseResult = TextAnalyzeRequestSchema.safeParse(body);
   if (!parseResult.success) {
@@ -124,9 +127,9 @@ analyzeRoute.post("/v1/analyze/text", requireDevToken(), async (c) => {
       context,
     });
 
-    return await handlePipelineResult(c, result, Date.now() - startedAt);
+    return await handlePipelineResult(c, result, Date.now() - startedAt, userId);
   } catch (err) {
-    return await handlePipelineError(c, err, Date.now() - startedAt);
+    return await handlePipelineError(c, err, Date.now() - startedAt, userId);
   }
 });
 
@@ -146,13 +149,14 @@ async function handlePipelineResult(
   c: import("hono").Context,
   result: AnalyzePipelineResult,
   latencyMs: number,
+  userId: string,
 ) {
   // パース失敗(両モデル) -> 422
   if (result.parsed === null) {
     if (isDbConfigured()) {
       const db = await getDb();
       await recordAnalysisLog(db, {
-        userId: DEV_USER_ID,
+        userId,
         model: result.finalModel,
         escalated: result.escalated,
         flagged: result.flagged,
@@ -176,7 +180,7 @@ async function handlePipelineResult(
     if (isDbConfigured()) {
       const db = await getDb();
       analysisLogId = await recordAnalysisLog(db, {
-        userId: DEV_USER_ID,
+        userId,
         model: result.finalModel,
         escalated: result.escalated,
         flagged: result.flagged,
@@ -213,7 +217,7 @@ async function handlePipelineResult(
     analysis = matchResult.analysis;
 
     analysisLogId = await recordAnalysisLog(db, {
-      userId: DEV_USER_ID,
+      userId,
       model: result.finalModel,
       escalated: result.escalated,
       flagged: result.flagged,
@@ -237,7 +241,12 @@ async function handlePipelineResult(
   return c.json(response, 200);
 }
 
-async function handlePipelineError(c: import("hono").Context, err: unknown, latencyMs: number) {
+async function handlePipelineError(
+  c: import("hono").Context,
+  err: unknown,
+  latencyMs: number,
+  userId: string,
+) {
   if (err instanceof MissingApiKeyError) {
     return c.json({ error_kind: "config_error", message: err.message }, 500);
   }
@@ -254,7 +263,7 @@ async function handlePipelineError(c: import("hono").Context, err: unknown, late
       anthropicError.name === "APIConnectionTimeoutError")
   ) {
     if (isDbConfigured()) {
-      await recordErrorLog(latencyMs, anthropicError);
+      await recordErrorLog(userId, latencyMs, anthropicError);
     }
     return c.json(
       { error_kind: "upstream_unavailable", message: "解析サーバが混み合っています。もう一度お試しください。" },
@@ -265,7 +274,7 @@ async function handlePipelineError(c: import("hono").Context, err: unknown, late
   // レート制限超過(M5で実装予定。現状は到達しない)
   if (anthropicError && anthropicError.status === 429) {
     if (isDbConfigured()) {
-      await recordErrorLog(latencyMs, anthropicError);
+      await recordErrorLog(userId, latencyMs, anthropicError);
     }
     return c.json(
       { error_kind: "rate_limited", message: "本日の解析上限に達しました。" },
@@ -275,7 +284,7 @@ async function handlePipelineError(c: import("hono").Context, err: unknown, late
 
   console.error("analyze pipeline error:", err);
   if (isDbConfigured()) {
-    await recordErrorLog(latencyMs, err);
+    await recordErrorLog(userId, latencyMs, err);
   }
   return c.json(
     { error_kind: "error", message: "解析中にエラーが発生しました。" },
@@ -284,10 +293,10 @@ async function handlePipelineError(c: import("hono").Context, err: unknown, late
 }
 
 /** status="error" として analysis_logs に記録する(モデル不明のため model は "unknown")。 */
-async function recordErrorLog(latencyMs: number, err: unknown): Promise<void> {
+async function recordErrorLog(userId: string, latencyMs: number, err: unknown): Promise<void> {
   const db = await getDb();
   await recordAnalysisLog(db, {
-    userId: DEV_USER_ID,
+    userId,
     model: "unknown",
     escalated: false,
     flagged: false,

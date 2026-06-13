@@ -1,10 +1,10 @@
 /**
- * 食事記録API(PLAN.md §4.3 / §4.5 — M2)。
+ * 食事記録API(PLAN.md §4.3 / §4.5 — M2/M3)。
  *
  * POST /v1/meals: analysisLogId + 編集後items を meals/meal_items に保存する。
  * GET  /v1/meals?date=YYYY-MM-DD: 指定日(Asia/Tokyo の DATE)のmealsを取得する。
  *
- * 認証はM1のdevトークンのまま。user_idは固定devユーザー(seedで作成、DEV_USER_ID)。
+ * 認証: requireAuth()(自前JWT or devトークン)。user_idは認証済みユーザーのID。
  * DB未設定(DATABASE_URLなし・非テスト環境)の場合は503(DB機能未提供)を返す。
  */
 
@@ -13,8 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, isDbConfigured } from "../db/client.js";
 import { meals, mealItems } from "../db/schema.js";
-import { DEV_USER_ID } from "../db/seed.js";
-import { requireDevToken } from "../lib/auth.js";
+import { getUserId, requireAuth } from "../lib/auth.js";
 
 export const mealsRoute = new Hono();
 
@@ -59,10 +58,12 @@ function dbUnavailableResponse(c: import("hono").Context) {
  *
  * totalは items から再計算してmealsに保存する(クライアント送信値は信用しない)。
  */
-mealsRoute.post("/v1/meals", requireDevToken(), async (c) => {
+mealsRoute.post("/v1/meals", requireAuth(), async (c) => {
   if (!isDbConfigured()) {
     return dbUnavailableResponse(c);
   }
+
+  const userId = getUserId(c);
 
   const body = await c.req.json().catch(() => null);
   const parseResult = CreateMealSchema.safeParse(body);
@@ -89,7 +90,7 @@ mealsRoute.post("/v1/meals", requireDevToken(), async (c) => {
   const insertedMeal = await db
     .insert(meals)
     .values({
-      userId: DEV_USER_ID,
+      userId,
       eatenOn,
       eatenAt,
       mealType,
@@ -137,10 +138,12 @@ mealsRoute.post("/v1/meals", requireDevToken(), async (c) => {
  * GET /v1/meals?date=YYYY-MM-DD
  * 指定日(Asia/Tokyo の DATE)に記録された meals + meal_items を返す。
  */
-mealsRoute.get("/v1/meals", requireDevToken(), async (c) => {
+mealsRoute.get("/v1/meals", requireAuth(), async (c) => {
   if (!isDbConfigured()) {
     return dbUnavailableResponse(c);
   }
+
+  const userId = getUserId(c);
 
   const date = c.req.query("date");
   const dateParseResult = DATE_QUERY_SCHEMA.safeParse(date);
@@ -156,7 +159,7 @@ mealsRoute.get("/v1/meals", requireDevToken(), async (c) => {
   const mealRows = await db
     .select()
     .from(meals)
-    .where(and(eq(meals.userId, DEV_USER_ID), eq(meals.eatenOn, dateParseResult.data)));
+    .where(and(eq(meals.userId, userId), eq(meals.eatenOn, dateParseResult.data)));
 
   const results = [];
   for (const meal of mealRows) {
