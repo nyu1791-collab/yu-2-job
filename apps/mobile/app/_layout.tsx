@@ -17,7 +17,7 @@ if (Platform.OS === "web" && typeof window !== "undefined" && typeof document !=
   const showError = (label: string, detail: unknown) => {
     const message =
       detail instanceof Error
-        ? detail.stack || detail.message
+        ? `${detail.message}\n\n${detail.stack ?? ""}`
         : typeof detail === "string"
           ? detail
           : (() => {
@@ -57,7 +57,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         エラーが発生しました
       </Text>
       <Text style={{ color: "#ffd6d6", fontSize: 12, fontFamily: "monospace", marginBottom: 20 }}>
-        {error.stack || error.message}
+        {`${error.message}\n\n${error.stack ?? ""}`}
       </Text>
       <Pressable
         onPress={retry}

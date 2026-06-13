@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && EXPO_OFFLINE=1 pnpm --filter @pashacaro/mobile exec expo export -p web",
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && EXPO_OFFLINE=1 pnpm --filter @pashacaro/mobile exec expo export -p web --no-minify",
   "outputDirectory": "dist",
   "installCommand": "echo done",
   "rewrites": [
