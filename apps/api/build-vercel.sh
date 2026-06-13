@@ -22,14 +22,27 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+echo "[build-vercel] cwd=$(pwd) node=$(node --version)"
+
 OUT=".vercel/output"
 FUNC="$OUT/functions/api/index.func"
 
 rm -rf "$OUT"
 mkdir -p "$FUNC" "$OUT/static"
 
+# esbuild の場所を解決(直接依存なので通常は ./node_modules/.bin にあるが、
+# 念のため pnpm exec / npx へフォールバックする)
+if [ -x ./node_modules/.bin/esbuild ]; then
+  ESBUILD="./node_modules/.bin/esbuild"
+elif command -v esbuild >/dev/null 2>&1; then
+  ESBUILD="esbuild"
+else
+  ESBUILD="pnpm exec esbuild"
+fi
+echo "[build-vercel] using esbuild: $ESBUILD"
+
 # 1) 関数本体を単一ESMにバンドル
-./node_modules/.bin/esbuild src/vercel-entry.ts \
+$ESBUILD src/vercel-entry.ts \
   --bundle \
   --platform=node \
   --format=esm \
@@ -43,7 +56,7 @@ mkdir -p "$FUNC" "$OUT/static"
 # 2) 関数の設定(Nodeランタイム / ハンドラ / ESM)
 cat > "$FUNC/.vc-config.json" <<'JSON'
 {
-  "runtime": "nodejs20.x",
+  "runtime": "nodejs22.x",
   "handler": "index.mjs",
   "launcherType": "Nodejs",
   "shouldAddHelpers": false,
