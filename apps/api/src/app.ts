@@ -1,13 +1,17 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { analyzeRoute } from "./routes/analyze.js";
+import { authRoute } from "./routes/auth.js";
 import { mealsRoute } from "./routes/meals.js";
+import { meRoute } from "./routes/me.js";
 
 export function createApp(): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  app.route("/", authRoute);
+  app.route("/", meRoute);
   app.route("/", analyzeRoute);
   app.route("/", mealsRoute);
 

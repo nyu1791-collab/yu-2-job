@@ -107,8 +107,9 @@ describe("createApp", () => {
     expect(res.status).toBe(401);
   });
 
-  it("when DEV_TOKEN env is not set, requireDevToken returns 500", async () => {
+  it("when neither DEV_TOKEN nor JWT_SECRET env is set, requireAuth returns 500", async () => {
     delete process.env["DEV_TOKEN"];
+    delete process.env["JWT_SECRET"];
     const app = createApp();
     const res = await app.request("/v1/analyze", {
       method: "POST",
