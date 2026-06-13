@@ -16,6 +16,7 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "食事の写真を撮影してカロリー・PFCを解析するために使用します。",
         "NSPhotoLibraryUsageDescription": "ライブラリから食事の写真を選択して解析するために使用します。"
@@ -30,6 +31,8 @@
     },
     "plugins": [
       "expo-router",
+      "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-camera",
         {

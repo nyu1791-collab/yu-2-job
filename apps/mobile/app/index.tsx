@@ -1,20 +1,41 @@
 import { Link } from "expo-router";
+import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAnalysisStore } from "../src/lib/analysis-store";
+import { getMyGoal, type GoalRow } from "../src/lib/api-client";
 
 /**
- * 最小のホーム画面(M1版)。
+ * 最小のホーム画面(M1/M3版)。
  *
  * タブなし。撮影ボタンと最後の解析結果(あれば)を表示する。
+ * M3で目標PFC(GET /v1/me/goal)を表示するカードを追加した。
  * M4で今日のリング・タイムラインに置き換える。
  */
 export default function HomeScreen() {
   const { lastAnalysis, recordedMeals } = useAnalysisStore();
+  const [goal, setGoal] = useState<GoalRow | null>(null);
+
+  useEffect(() => {
+    getMyGoal()
+      .then(setGoal)
+      .catch((err) => console.error("目標の取得に失敗しました:", err));
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>パシャカロ</Text>
       <Text style={styles.subtitle}>写真を撮るだけで3秒記録</Text>
+
+      {goal ? (
+        <View style={styles.goalCard}>
+          <Text style={styles.goalCardTitle}>今日の目標</Text>
+          <Text style={styles.goalCardKcal}>{Math.round(goal.targetKcal)} kcal</Text>
+          <Text style={styles.goalCardPfc}>
+            P {Math.round(goal.targetProteinG)}g ・ F {Math.round(goal.targetFatG)}g ・ C{" "}
+            {Math.round(goal.targetCarbsG)}g
+          </Text>
+        </View>
+      ) : null}
 
       <Link href="/capture/camera" asChild>
         <View style={styles.captureButton}>
@@ -82,6 +103,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginBottom: 12,
+  },
+  goalCard: {
+    backgroundColor: "#eaf6fa",
+    borderRadius: 16,
+    padding: 16,
+    gap: 4,
+    marginBottom: 8,
+  },
+  goalCardTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0a7ea4",
+  },
+  goalCardKcal: {
+    fontSize: 24,
+    fontWeight: "800",
+  },
+  goalCardPfc: {
+    fontSize: 13,
+    color: "#333",
   },
   captureButton: {
     backgroundColor: "#0a7ea4",
