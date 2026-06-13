@@ -12,6 +12,7 @@
     "test": "echo \"no mobile unit tests in M1 (see packages/shared)\" && exit 0"
   },
   "dependencies": {
+    "@expo/metro-runtime": "^56.0.15",
     "@pashacaro/shared": "workspace:*",
     "expo": "~56.0.11",
     "expo-apple-authentication": "~56.0.4",
@@ -31,6 +32,7 @@
     "react-native-purchases": "^10.3.0",
     "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "^4.25.2",
+    "react-native-web": "^0.21.2",
     "zod": "^3.25.0"
   },
   "devDependencies": {
