@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { calculateBmr, calculateGoal } from "../src/goal-calc.js";
+import {
+  calculateBmr,
+  calculateGoal,
+  recalculateGoalWithKcal,
+  recalculatePfcForKcal,
+} from "../src/goal-calc.js";
 
 describe("calculateBmr", () => {
   it("男性のBMRを計算する (Mifflin-St Jeor)", () => {
@@ -95,5 +100,47 @@ describe("calculateGoal", () => {
       goalType: "cut",
     });
     expect(result.targetCarbsG).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("recalculatePfcForKcal", () => {
+  it("Pを固定し、Fは25%、Cは残りから算出する", () => {
+    const result = recalculatePfcForKcal({ targetKcal: 2000, proteinG: 140 });
+
+    expect(result.targetKcal).toBe(2000);
+    expect(result.targetProteinG).toBe(140);
+
+    const expectedFatG = (2000 * 0.25) / 9;
+    expect(result.targetFatG).toBeCloseTo(expectedFatG, 5);
+
+    const expectedCarbsG = (2000 - 140 * 4 - expectedFatG * 9) / 4;
+    expect(result.targetCarbsG).toBeCloseTo(expectedCarbsG, 5);
+  });
+
+  it("炭水化物が負にならないようclampされる", () => {
+    // P=200g(800kcal)+F=25%(500kcal)=1300kcal > targetKcal=1000kcal
+    const result = recalculatePfcForKcal({ targetKcal: 1000, proteinG: 200 });
+    expect(result.targetCarbsG).toBe(0);
+  });
+});
+
+describe("recalculateGoalWithKcal", () => {
+  it("bmr/tdee/Pを変えずにtargetKcalだけ差し替えてF/Cを再計算する", () => {
+    const base = calculateGoal({
+      weightKg: 70,
+      heightCm: 175,
+      age: 30,
+      sex: "male",
+      activityLevel: "moderate",
+      goalType: "cut",
+    });
+
+    const adjusted = recalculateGoalWithKcal(base, base.targetKcal + 50);
+
+    expect(adjusted.bmr).toBe(base.bmr);
+    expect(adjusted.tdee).toBe(base.tdee);
+    expect(adjusted.targetProteinG).toBe(base.targetProteinG);
+    expect(adjusted.targetKcal).toBeCloseTo(base.targetKcal + 50, 5);
+    expect(adjusted.targetFatG).not.toBeCloseTo(base.targetFatG, 5);
   });
 });

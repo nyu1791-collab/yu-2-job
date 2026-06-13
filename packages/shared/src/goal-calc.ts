@@ -84,20 +84,51 @@ export function calculateGoal(input: GoalCalcInput): GoalCalcResult {
   const tdee = bmr * ACTIVITY_FACTORS[activityLevel];
   const targetKcal = tdee + GOAL_KCAL_ADJUSTMENT[goalType];
 
-  const targetProteinG = weightKg * PROTEIN_G_PER_KG;
+  return {
+    bmr,
+    tdee,
+    ...recalculatePfcForKcal({ targetKcal, proteinG: weightKg * PROTEIN_G_PER_KG }),
+  };
+}
+
+/**
+ * targetKcal(と固定のP)から F/C を再計算する。
+ *   F (脂質)     = targetKcalの25%
+ *   C (炭水化物) = 残りのkcalから算出(0未満はclamp)
+ *
+ * オンボーディングの目標カロリー微調整(±50kcal)や、
+ * `/v1/me/goal` でのtargetKcal上書き保存に使う。
+ */
+export function recalculatePfcForKcal(input: {
+  targetKcal: number;
+  proteinG: number;
+}): { targetKcal: number; targetProteinG: number; targetFatG: number; targetCarbsG: number } {
+  const { targetKcal, proteinG } = input;
+
   const fatKcal = targetKcal * FAT_RATIO_OF_KCAL;
   const targetFatG = fatKcal / KCAL_PER_G_FAT;
 
-  const proteinKcal = targetProteinG * KCAL_PER_G_PROTEIN;
+  const proteinKcal = proteinG * KCAL_PER_G_PROTEIN;
   const remainingKcalForCarbs = targetKcal - proteinKcal - fatKcal;
   const targetCarbsG = Math.max(0, remainingKcalForCarbs / KCAL_PER_G_CARBS);
 
   return {
-    bmr,
-    tdee,
     targetKcal,
-    targetProteinG,
+    targetProteinG: proteinG,
     targetFatG,
     targetCarbsG,
+  };
+}
+
+/**
+ * 計算済みの目標(`calculateGoal`の結果)から、targetKcalだけを差し替えて
+ * P/F/Cを再計算する(bmr/tdeeは変更しない)。
+ * オンボーディングの目標カロリー微調整UIで使用する。
+ */
+export function recalculateGoalWithKcal(base: GoalCalcResult, targetKcal: number): GoalCalcResult {
+  return {
+    bmr: base.bmr,
+    tdee: base.tdee,
+    ...recalculatePfcForKcal({ targetKcal, proteinG: base.targetProteinG }),
   };
 }
