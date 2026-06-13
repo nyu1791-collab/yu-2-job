@@ -84,9 +84,21 @@ export default function AnalyzingScreen() {
           return;
         }
         if (response.error_kind === "rate_limited") {
-          Alert.alert("本日の解析上限に達しました", "プランのアップグレードをご検討ください。", [
-            { text: "OK", onPress: () => router.replace("/capture/camera") },
-          ]);
+          const remaining = response.remaining ?? 0;
+          Alert.alert(
+            "本日の解析上限に達しました",
+            `本日analyzeできる残り回数は${remaining}回です。プランのアップグレードをご検討ください。`,
+            [{ text: "OK", onPress: () => router.replace("/capture/camera") }],
+          );
+          return;
+        }
+
+        if (response.error_kind === "subscription_required") {
+          Alert.alert(
+            "プランへの登録が必要です",
+            "この機能を利用するには、プランへの登録(7日間無料トライアル)が必要です。",
+            [{ text: "OK", onPress: () => router.replace("/(onboarding)/paywall") }],
+          );
           return;
         }
         Alert.alert("エラー", response.message, [

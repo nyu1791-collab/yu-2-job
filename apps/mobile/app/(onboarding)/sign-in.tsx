@@ -9,10 +9,12 @@ import {
   signInWithApple,
   signInWithGoogle,
   updateMyGoal,
+  updateRcAppUserId,
   type AuthResponse,
 } from "../../src/lib/api-client";
 import { setAuthTokens } from "../../src/lib/auth-store";
 import { useGoalStore } from "../../src/lib/goal-store";
+import { logInRevenueCat } from "../../src/lib/purchases";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -48,7 +50,29 @@ export default function SignInScreen() {
     });
 
     await saveGoalIfNeeded();
+    await syncRevenueCatAppUserId(response.user.id);
     router.replace("/(onboarding)/paywall");
+  }
+
+  /**
+   * RevenueCatの匿名ユーザーをサーバのuserIdへエイリアス統合する(PLAN.md §4.5 M5)。
+   *
+   * - `Purchases.logIn(userId)` でRevenueCat側のapp_user_idをuserIdに切り替え、
+   *   その結果(originalAppUserId)を `PUT /v1/me/rc-app-user-id` でサーバへ保存する。
+   * - EXPO_PUBLIC_RC_API_KEY未設定(RevenueCat未接続環境)では `logInRevenueCat` がnullを返すため、
+   *   何もしない。
+   * - 失敗してもオンボーディングは継続する(paywall側でdevスキップ等のフォールバックがある)。
+   */
+  async function syncRevenueCatAppUserId(userId: string) {
+    try {
+      const rcAppUserId = await logInRevenueCat(userId);
+      if (!rcAppUserId) {
+        return;
+      }
+      await updateRcAppUserId(rcAppUserId);
+    } catch (err) {
+      console.error("RevenueCat app_user_idの同期に失敗しました:", err);
+    }
   }
 
   /** goal-storeに微調整済みの目標があれば PUT /v1/me/goal で保存する。 */
@@ -140,6 +164,7 @@ export default function SignInScreen() {
     try {
       await setAuthTokens({ accessToken: devToken, refreshToken: "", userId: "dev" });
       await saveGoalIfNeeded();
+      await syncRevenueCatAppUserId("dev");
       router.replace("/(onboarding)/paywall");
     } finally {
       setIsLoading(false);
