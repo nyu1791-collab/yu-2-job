@@ -220,8 +220,9 @@ iPhoneのSafariなどから**アプリの見た目・画面遷移を確認する
      - `EXPO_PUBLIC_DEV_TOKEN` : `apps/api` 側の `DEV_TOKEN` と
        同じ値(開発用の「devトークンでスキップ」サインインに使います)
    - **注意**: これらはバックエンドAPI(`apps/api`)が別途デプロイされて
-     稼働している必要があります。現時点では `apps/api` のVercelデプロイは
-     未実施のため、上記の環境変数を設定しても、**サインインや写真AI解析など
+     稼働している必要があります。`apps/api` のデプロイ手順(Neon + Vercel)は
+     [`apps/api/DEPLOY.md`](apps/api/DEPLOY.md) を参照してください。
+     デプロイ前(または環境変数を仮の値のまま)でも、**サインインや写真AI解析など
      バックエンド連携が必要な機能はまだ動作しません**。
    - APIサーバーが未デプロイの状態でも、`EXPO_PUBLIC_API_URL` /
      `EXPO_PUBLIC_DEV_TOKEN` を**仮の値で設定しておけばビルド自体は成功**し、
