@@ -27,8 +27,18 @@ export const PREMIUM_ENTITLEMENT_ID = "premium";
 
 let configured = false;
 
-/** EXPO_PUBLIC_RC_API_KEY が設定されているか(Offeringsを取得できるか)。 */
+/**
+ * EXPO_PUBLIC_RC_API_KEY が設定されているか(Offeringsを取得できるか)。
+ *
+ * Web版(`Platform.OS === "web"`)では、RevenueCat SDKの初期化・購入機能を
+ * 提供しない(Webデモは見た目確認のみが目的で、課金フローはApp/Play側で
+ * テストする想定のため)。常にfalseを返し、paywall.tsx側で
+ * 「Webデモでは購入機能は利用できません」という案内を表示する。
+ */
 export function isPurchasesConfigured(): boolean {
+  if (Platform.OS === "web") {
+    return false;
+  }
   return Boolean(process.env["EXPO_PUBLIC_RC_API_KEY"]);
 }
 

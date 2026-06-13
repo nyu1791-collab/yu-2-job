@@ -1,5 +1,6 @@
+import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "./secure-store";
 import { computeReminderFireTimes, todayInTokyo } from "@pashacaro/shared";
 import { getMealsByDate } from "./api-client";
 
@@ -86,6 +87,12 @@ async function storeNotificationIds(ids: string[]): Promise<void> {
 
 /** 予約済みのリマインダー通知をすべてキャンセルする。 */
 export async function cancelReminderNotifications(): Promise<void> {
+  // Web版ではローカル通知のスケジュール機能(expo-notifications)が利用できないため、
+  // 何もせずに既存の予約IDのみクリアする(クラッシュを避ける)。
+  if (Platform.OS === "web") {
+    await storeNotificationIds([]);
+    return;
+  }
   const ids = await getStoredNotificationIds();
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
   await storeNotificationIds([]);
@@ -102,6 +109,12 @@ export async function cancelReminderNotifications(): Promise<void> {
  * アプリのフォアグラウンド復帰・起動時に呼ぶことを想定する。
  */
 export async function syncMealReminders(now: Date = new Date()): Promise<void> {
+  // Web版ではローカル通知のスケジュール機能(expo-notifications)が利用できないため、
+  // リマインダーの再スケジュールは行わない(クラッシュを避けるためのno-op)。
+  if (Platform.OS === "web") {
+    return;
+  }
+
   const enabled = await getNotificationsEnabled();
   if (!enabled) {
     await cancelReminderNotifications();

@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import {
   getCurrentOffering,
@@ -105,12 +105,15 @@ export default function PaywallScreen() {
         <Text style={styles.title}>7日間無料トライアル</Text>
         <Text style={styles.body}>
           トライアル後は月額980円 / 年額6,800円。{"\n"}
-          この環境ではRevenueCatが設定されていないため、{"\n"}
-          devスキップで進めます。
+          {Platform.OS === "web"
+            ? "デモ版(Web)では購入機能は利用できません。続行ボタンでアプリのUIを確認できます。"
+            : "この環境ではRevenueCatが設定されていないため、\ndevスキップで進めます。"}
         </Text>
 
         <Pressable style={styles.devButton} onPress={handleDevSkip}>
-          <Text style={styles.devButtonText}>devスキップ(開発用)</Text>
+          <Text style={styles.devButtonText}>
+            {Platform.OS === "web" ? "続行(Webデモ)" : "devスキップ(開発用)"}
+          </Text>
         </Pressable>
       </View>
     );
