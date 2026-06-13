@@ -1,6 +1,6 @@
 import type { ActivityLevel, Sex } from "@pashacaro/shared";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { Redirect, router } from "expo-router";
+import { useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { isDraftComplete, setGoalProfile, useGoalStore } from "../../../src/lib/goal-store";
 
@@ -31,11 +31,11 @@ export default function GoalStep2Screen() {
   const [weightKg, setWeightKg] = useState(draft.weightKg ? String(draft.weightKg) : "");
   const [activityLevel, setActivityLevel] = useState<ActivityLevel | null>(draft.activityLevel);
 
-  useEffect(() => {
-    if (!draft.goalType) {
-      router.replace("/(onboarding)/goal/step1");
-    }
-  }, [draft.goalType]);
+  // ステートレスな直接リロード(in-memoryストアが空 = goalType未設定)では、
+  // welcome画面へ宣言的にリダイレクトしてクリーンに再スタートする。
+  if (!draft.goalType) {
+    return <Redirect href="/(onboarding)/welcome" />;
+  }
 
   function handleNext() {
     const ageNum = Number(age);

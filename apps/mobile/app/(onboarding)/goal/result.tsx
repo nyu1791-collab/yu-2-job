@@ -1,6 +1,6 @@
 import { calculateGoal, recalculateGoalWithKcal } from "@pashacaro/shared";
-import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { Redirect, router } from "expo-router";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { isDraftComplete, setCalculatedGoal, useGoalStore } from "../../../src/lib/goal-store";
 
@@ -21,12 +21,6 @@ export default function GoalResultScreen() {
   const { draft } = useGoalStore();
   const [adjustedKcal, setAdjustedKcal] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!isDraftComplete(draft)) {
-      router.replace("/(onboarding)/goal/step1");
-    }
-  }, [draft]);
-
   const base = useMemo(() => {
     if (!isDraftComplete(draft)) {
       return null;
@@ -40,8 +34,10 @@ export default function GoalResultScreen() {
     return recalculateGoalWithKcal(base, adjustedKcal);
   }, [base, adjustedKcal]);
 
+  // ステートレスな直接リロード(in-memoryストアが空)では、空のViewで止まらず
+  // welcome画面へ宣言的にリダイレクトしてクリーンに再スタートする。
   if (!base || !result) {
-    return <View style={styles.container} />;
+    return <Redirect href="/(onboarding)/welcome" />;
   }
 
   function adjust(delta: number) {
