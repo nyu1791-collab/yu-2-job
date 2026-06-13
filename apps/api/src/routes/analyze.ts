@@ -17,6 +17,7 @@ import { getUserId, requireAuth } from "../lib/auth.js";
 import { getDb, isDbConfigured } from "../db/client.js";
 import { recordAnalysisLog } from "../lib/analysis-logs.js";
 import { buildMatchesForDishes } from "../lib/food-lookup.js";
+import { getRateLimitRemaining, requireEntitlement, requireRateLimit } from "../lib/entitlement.js";
 
 export const analyzeRoute = new Hono();
 
@@ -40,6 +41,8 @@ interface AnalyzeSuccessResponse {
   usage: AnalyzePipelineResult["usage"];
   matched_product_id: null;
   analysisLogId: number | null;
+  /** 当日の残り解析回数(レート制限ゲート通過時のみ算出。DB未設定時はnull)。 */
+  remaining: number | null;
 }
 
 /** PLAN.md §4.2 失敗時UXの応答ヘルパー */
@@ -61,10 +64,11 @@ function buildContext(input: {
  * POST /v1/analyze
  * {imageBase64, mediaType, takenAt?, userNote?} -> Analysis + 補正済み栄養 + analysisLogId(M2)
  *
- * ミドルウェア順(M1版): devトークン検証 -> 画像サイズ検証(2MB超は413) -> 解析
- * entitlement/レート制限はM5で追加。
+ * ミドルウェア順(PLAN.md §4.5 M5版):
+ *   認証(requireAuth) -> entitlementゲート(requireEntitlement) ->
+ *   レート制限ゲート(requireRateLimit) -> 画像サイズ検証(2MB超は413) -> 解析
  */
-analyzeRoute.post("/v1/analyze", requireAuth(), async (c) => {
+analyzeRoute.post("/v1/analyze", requireAuth(), requireEntitlement(), requireRateLimit(), async (c) => {
   const userId = getUserId(c);
 
   const body = await c.req.json().catch(() => null);
@@ -105,8 +109,10 @@ analyzeRoute.post("/v1/analyze", requireAuth(), async (c) => {
 /**
  * POST /v1/analyze/text
  * {text, takenAt?} -> Analysis (Haiku固定。systemは同一でキャッシュ共有)
+ *
+ * ミドルウェア順は /v1/analyze と同様(PLAN.md §4.5 M5)。
  */
-analyzeRoute.post("/v1/analyze/text", requireAuth(), async (c) => {
+analyzeRoute.post("/v1/analyze/text", requireAuth(), requireEntitlement(), requireRateLimit(), async (c) => {
   const userId = getUserId(c);
 
   const body = await c.req.json().catch(() => null);
@@ -236,6 +242,7 @@ async function handlePipelineResult(
     usage: result.usage,
     matched_product_id: null, // Phase2布石
     analysisLogId,
+    remaining: getRateLimitRemaining(c),
   };
 
   return c.json(response, 200);

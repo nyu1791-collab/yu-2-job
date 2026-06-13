@@ -1,18 +1,33 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { _resetClientForTest } from "../src/lib/analyze.js";
+import { _resetDbForTest, _setDbForTest, type Db } from "../src/db/client.js";
+import { setupTestDb } from "./helpers/db.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
 describe("createApp", () => {
+  let db: Db;
+
+  beforeAll(async () => {
+    db = await setupTestDb();
+  });
+
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
     _resetClientForTest();
+    _setDbForTest(db);
   });
 
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
     _resetClientForTest();
+    _resetDbForTest();
+  });
+
+  afterAll(async () => {
+    const maybeClose = (db as unknown as { $client?: { close?: () => Promise<void> } }).$client;
+    await maybeClose?.close?.();
   });
 
   it("GET /health returns 200 ok", async () => {

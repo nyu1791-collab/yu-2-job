@@ -15,7 +15,9 @@ import { z } from "zod";
 import { calculateGoal, recalculatePfcForKcal } from "@pashacaro/shared";
 import { getDb, isDbConfigured } from "../db/client.js";
 import { goals, users } from "../db/schema.js";
+import { getEntitlementInfo } from "../lib/entitlement.js";
 import { getUserId, requireAuth } from "../lib/auth.js";
+import { applyPendingSubscriptionEvents } from "../lib/revenuecat.js";
 
 export const meRoute = new Hono();
 
@@ -229,4 +231,77 @@ meRoute.put("/v1/me/goal", requireAuth(), async (c) => {
   }
 
   return c.json({ goal: goalRow }, 200);
+});
+
+/**
+ * GET /v1/me/entitlement
+ * 現在のentitlement(課金)状況を返す(PLAN.md §4.5 M5)。
+ *
+ * subscriptions行が無い場合は status:"none", entitled:false を返す(404にしない)。
+ */
+meRoute.get("/v1/me/entitlement", requireAuth(), async (c) => {
+  if (!isDbConfigured()) {
+    return dbUnavailableResponse(c);
+  }
+  const userId = getUserId(c);
+  const info = await getEntitlementInfo(userId);
+
+  return c.json(
+    {
+      entitled: info.entitled,
+      status: info.status,
+      expiresAt: info.expiresAt,
+      productId: info.productId,
+      entitlement: info.entitlement,
+    },
+    200,
+  );
+});
+
+const UpdateRcAppUserIdSchema = z.object({
+  rcAppUserId: z.string().min(1),
+});
+
+/**
+ * PUT /v1/me/rc-app-user-id
+ * {rcAppUserId} -> users.rc_app_user_id を更新する(PLAN.md §4.4/§4.5 M5)。
+ *
+ * サインイン後に `Purchases.logIn(userId)` でRevenueCat側のエイリアス統合を行った直後、
+ * モバイルからこのエンドポイントを呼び、サーバの users.rc_app_user_id を同期する。
+ *
+ * 更新後、その rc_app_user_id 宛に届いていた保留中のWebhookイベント
+ * (pending_subscription_events)があれば再適用し、subscriptionsへ反映する
+ * (lib/revenuecat.ts の applyPendingSubscriptionEvents)。
+ *
+ * 他ユーザーが既に同じ rc_app_user_id を使用している場合は409。
+ */
+meRoute.put("/v1/me/rc-app-user-id", requireAuth(), async (c) => {
+  if (!isDbConfigured()) {
+    return dbUnavailableResponse(c);
+  }
+  const userId = getUserId(c);
+
+  const body = await c.req.json().catch(() => null);
+  const parseResult = UpdateRcAppUserIdSchema.safeParse(body);
+  if (!parseResult.success) {
+    return c.json({ error_kind: "invalid_request", message: "リクエストボディが不正です。" }, 400);
+  }
+  const { rcAppUserId } = parseResult.data;
+
+  const db = await getDb();
+
+  const existing = await db.select().from(users).where(eq(users.rcAppUserId, rcAppUserId)).limit(1);
+  const existingUser = existing[0];
+  if (existingUser && existingUser.id !== userId) {
+    return c.json(
+      { error_kind: "conflict", message: "このrcAppUserIdは別のユーザーに紐付けられています。" },
+      409,
+    );
+  }
+
+  await db.update(users).set({ rcAppUserId }).where(eq(users.id, userId));
+
+  const appliedCount = await applyPendingSubscriptionEvents(db, userId, rcAppUserId);
+
+  return c.json({ rcAppUserId, appliedPendingEvents: appliedCount }, 200);
 });
