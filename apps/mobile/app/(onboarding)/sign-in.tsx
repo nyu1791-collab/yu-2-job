@@ -26,16 +26,80 @@ WebBrowser.maybeCompleteAuthSession();
  * サインイン成功後、goal-storeに保持しているcalculated(目標PFC)があれば
  * PUT /v1/me/goal で保存し、ホーム(/)へ遷移する。
  */
-export default function SignInScreen() {
-  const { calculated, draft } = useGoalStore();
-  const [isLoading, setIsLoading] = useState(false);
+/**
+ * 現在のプラットフォームに対応するGoogle OAuthクライアントIDが設定されているか。
+ *
+ * expo-auth-session の `Google.useIdTokenAuthRequest` は、そのプラットフォーム用の
+ * クライアントID(web: webClientId)が未設定だとフック呼び出し時に同期的に例外を投げる。
+ * 特にWebデモではクライアントID未設定が通常運用のため、未設定時はGoogleボタン
+ * (= フックを呼ぶ子コンポーネント)自体をレンダリングしないことでクラッシュを防ぐ。
+ */
+const googleClientIdForPlatform =
+  Platform.OS === "ios"
+    ? process.env["EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"]
+    : Platform.OS === "android"
+      ? process.env["EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID"]
+      : process.env["EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"];
 
+/**
+ * Googleサインインボタン。`Google.useIdTokenAuthRequest` をこの子コンポーネント内で
+ * 呼ぶことで、クライアントID未設定時は親がこのコンポーネントを描画しない(=フックが
+ * 走らない)選択肢を取れるようにしている(フックは条件分岐できないため)。
+ */
+function GoogleSignInButton({
+  isLoading,
+  setIsLoading,
+  onSignedIn,
+}: {
+  isLoading: boolean;
+  setIsLoading: (value: boolean) => void;
+  onSignedIn: (response: AuthResponse) => Promise<void>;
+}) {
   // Google: EXPO_PUBLIC_GOOGLE_*_CLIENT_ID は本番でEAS環境変数として設定する想定。
   const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     iosClientId: process.env["EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"],
     androidClientId: process.env["EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID"],
     webClientId: process.env["EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"],
   });
+
+  async function handleGoogleSignIn() {
+    setIsLoading(true);
+    try {
+      const result = await promptGoogleAsync();
+      if (result.type !== "success") {
+        return;
+      }
+      const idToken = result.params["id_token"];
+      if (!idToken) {
+        Alert.alert("サインインに失敗しました", "id_tokenが取得できませんでした。");
+        return;
+      }
+      const response = await signInWithGoogle(idToken);
+      await onSignedIn(response);
+    } catch (err) {
+      console.error(err);
+      Alert.alert("サインインに失敗しました", "もう一度お試しください。");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <Pressable style={styles.googleButton} onPress={handleGoogleSignIn} disabled={isLoading}>
+        <Text style={styles.googleButtonText}>Googleでサインイン</Text>
+      </Pressable>
+
+      {googleResponse?.type === "error" ? (
+        <Text style={styles.errorText}>Googleサインインでエラーが発生しました。</Text>
+      ) : null}
+    </>
+  );
+}
+
+export default function SignInScreen() {
+  const { calculated, draft } = useGoalStore();
+  const [isLoading, setIsLoading] = useState(false);
 
   async function finishSignIn(response: AuthResponse) {
     if (!response.ok) {
@@ -123,28 +187,6 @@ export default function SignInScreen() {
     }
   }
 
-  async function handleGoogleSignIn() {
-    setIsLoading(true);
-    try {
-      const result = await promptGoogleAsync();
-      if (result.type !== "success") {
-        return;
-      }
-      const idToken = result.params["id_token"];
-      if (!idToken) {
-        Alert.alert("サインインに失敗しました", "id_tokenが取得できませんでした。");
-        return;
-      }
-      const response = await signInWithGoogle(idToken);
-      await finishSignIn(response);
-    } catch (err) {
-      console.error(err);
-      Alert.alert("サインインに失敗しました", "もう一度お試しください。");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   /**
    * devビルド用: EXPO_PUBLIC_DEV_TOKEN をアクセストークンとしてそのまま保存し、
    * devユーザー(DEV_USER_ID)としてAPIを使えるようにする。
@@ -188,12 +230,12 @@ export default function SignInScreen() {
         />
       ) : null}
 
-      <Pressable style={styles.googleButton} onPress={handleGoogleSignIn} disabled={isLoading}>
-        <Text style={styles.googleButtonText}>Googleでサインイン</Text>
-      </Pressable>
-
-      {googleResponse?.type === "error" ? (
-        <Text style={styles.errorText}>Googleサインインでエラーが発生しました。</Text>
+      {googleClientIdForPlatform ? (
+        <GoogleSignInButton
+          isLoading={isLoading}
+          setIsLoading={setIsLoading}
+          onSignedIn={finishSignIn}
+        />
       ) : null}
 
       {getDevToken() ? (
