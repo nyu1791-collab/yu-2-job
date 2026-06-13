@@ -1,6 +1,6 @@
 {
   "installCommand": "echo done",
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @pashacaro/api exec tsx src/db/migrate-prod.ts && mkdir -p apps/api/public",
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @pashacaro/api exec tsx src/db/migrate-prod.ts",
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/health", "destination": "/api/index" },
