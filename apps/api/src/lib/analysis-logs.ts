@@ -64,16 +64,32 @@ export async function recordAnalysisLog(db: Db, input: RecordAnalysisLogInput): 
   return Number(id);
 }
 
+/** Asia/Tokyo は UTC+9 固定(夏時間なし)。 */
+const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 /** Asia/Tokyo の "YYYY-MM-DD" の開始・終了(翌日0時、排他的上限)をUTC Dateで返す。 */
 export function tokyoDayRangeUtc(now: Date = new Date()): { start: Date; end: Date } {
-  // Asia/Tokyo は UTC+9 固定(夏時間なし)。
-  const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
   const tokyoNow = new Date(now.getTime() + TOKYO_OFFSET_MS);
   const y = tokyoNow.getUTCFullYear();
   const m = tokyoNow.getUTCMonth();
   const d = tokyoNow.getUTCDate();
 
   // Asia/Tokyo の当日0:00 を UTC に変換すると、UTC上では前日の15:00。
+  const startUtc = new Date(Date.UTC(y, m, d, 0, 0, 0) - TOKYO_OFFSET_MS);
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+  return { start: startUtc, end: endUtc };
+}
+
+/**
+ * 指定したAsia/Tokyoの "YYYY-MM-DD" 文字列の開始・終了(翌日0時、排他的上限)を
+ * UTC Dateで返す(日次コスト集計など、過去の任意日を指定する場合に使用)。
+ */
+export function tokyoDateRangeUtc(dateStr: string): { start: Date; end: Date } {
+  const [yStr, mStr, dStr] = dateStr.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr) - 1;
+  const d = Number(dStr);
+
   const startUtc = new Date(Date.UTC(y, m, d, 0, 0, 0) - TOKYO_OFFSET_MS);
   const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
   return { start: startUtc, end: endUtc };

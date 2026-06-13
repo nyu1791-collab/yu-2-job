@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "comment": "GET /v1/internal/cost-report — 毎日 03:00 Asia/Tokyo (= 18:00 UTC 前日) に実行。INTERNAL_CRON_SECRETはVercel側のHTTP-only環境変数として設定し、Vercel Cronのデフォルトのcron用Authorizationヘッダ(CRON_SECRET)経由、またはルート側で別途検証する想定。詳細はapps/api/src/routes/internal.tsのコメント参照。",
+      "path": "/v1/internal/cost-report",
+      "schedule": "0 18 * * *"
+    }
+  ]
+}

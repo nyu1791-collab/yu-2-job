@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { analyzeRoute } from "./routes/analyze.js";
 import { authRoute } from "./routes/auth.js";
+import { internalRoute } from "./routes/internal.js";
 import { mealsRoute } from "./routes/meals.js";
 import { meRoute } from "./routes/me.js";
 import { summaryRoute } from "./routes/summary.js";
@@ -18,6 +19,7 @@ export function createApp(): Hono {
   app.route("/", mealsRoute);
   app.route("/", summaryRoute);
   app.route("/", webhooksRoute);
+  app.route("/", internalRoute);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
