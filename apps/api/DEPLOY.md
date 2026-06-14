@@ -1,7 +1,9 @@
 # API(apps/api)をVercel + Neonにデプロイする手順
 
-このAPIは Hono を `hono/vercel` でラップした `apps/api/api/index.ts` をエントリポイントとし、
-`apps/api/vercel.json` の `rewrites` で `/health` と `/v1/*` をその関数に転送します。
+このAPIは Hono を `@hono/node-server/vercel` でラップした `apps/api/src/vercel-entry.ts` を
+エントリポイントとし、`apps/api/build-vercel.sh` がビルド時にesbuildで単一の関数へバンドルして
+Vercel Build Output API (`.vercel/output/`) を生成します。`/health` と `/v1/*` はその関数に
+ルーティングされます(`apps/api/vercel.json` 参照)。
 
 **この手順はすべてスマホ(ブラウザ)から完結します。ローカルターミナルは不要です。**
 マイグレーションと初期データ(seed)はVercelのビルド中に自動で適用されます(下記「2. マイグレーションは自動」参照)。
@@ -36,7 +38,7 @@
 1. https://vercel.com にGitHubアカウントでログイン
 2. 「Add New > Project」で `nyu1791-collab/yu-2-job` を選択
 3. 「Root Directory」を `apps/api` に変更(Edit リンクから設定)
-4. Framework Preset は **"Other"** を選択(`apps/api/vercel.json` のrewritesでルーティングされる)
+4. Framework Preset は **"Other"** を選択(`apps/api/vercel.json` のBuild Output APIでルーティングされる)
 
 ## 4. 環境変数を設定する
 
@@ -81,8 +83,29 @@ curl https://<project>.vercel.app/health
 
 ## 注意
 
-- `apps/api/api/index.ts`(サーバーレス関数)自体はマイグレーション/seedを実行しません。
-  マイグレーション/seedはビルド時の `buildCommand`(`src/db/migrate-prod.ts`)が担当します。
-- カスタム `buildCommand` を設定しても、Vercelは `api/` 配下のNode関数(`api/index.ts`)を
-  ゼロコンフィグで自動的に検出・バンドルします(`buildCommand` はマイグレーション実行のためだけに使われます)。
+- `apps/api/src/vercel-entry.ts`(サーバーレス関数のエントリポイント)自体はマイグレーション/seedを
+  実行しません。マイグレーション/seedはビルド時の `buildCommand`(`src/db/migrate-prod.ts`)が担当します。
+- `apps/api/vercel.json` の `buildCommand` は、マイグレーション実行後に
+  `apps/api/build-vercel.sh` を実行して `.vercel/output/` (Build Output API) を生成します。
+  これがそのままデプロイされる関数本体になります。
 - `INTERNAL_CRON_SECRET` を設定しない場合、`/v1/internal/cost-report` は500を返す(Cronが失敗する)。
+- `DEV_TOKEN` は、モバイル側Vercelプロジェクトの環境変数 `EXPO_PUBLIC_DEV_TOKEN` と
+  **完全に同じ値**である必要があります(後述「devトークンが一致しない場合」参照)。
+
+## devトークンが一致しない場合(「トークンが無効です。」エラー)
+
+モバイルアプリで「devトークンでスキップ」してサインインした後、AI解析などのAPI呼び出しで
+`{"message":"トークンが無効です。"}` (401) が返る場合、この `apps/api` 側の `DEV_TOKEN` と
+モバイル側Vercelプロジェクトの `EXPO_PUBLIC_DEV_TOKEN` の値が一致していません。
+
+対処方法:
+
+1. この `apps/api` プロジェクトの Vercel > Settings > Environment Variables で
+   `DEV_TOKEN` の値を確認する(未設定なら適当な固定文字列を設定して再デプロイ)。
+2. モバイル側プロジェクト(`apps/mobile`)の Vercel > Settings > Environment Variables で
+   `EXPO_PUBLIC_DEV_TOKEN` を、手順1と**全く同じ値**に設定する。
+3. `EXPO_PUBLIC_*` はビルド時に静的に埋め込まれるため、値を変更・新規設定した後は
+   モバイル側プロジェクトを**再デプロイ(Redeploy)**する必要がある
+   (Deployments タブ > 最新デプロイの「…」メニュー > Redeploy)。
+4. 再デプロイ完了後、モバイルアプリでいったんサインアウト/サインインし直し
+   (「devトークンでスキップ」を再度実行)、新しいトークンを取得する。
