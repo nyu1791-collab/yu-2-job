@@ -204,7 +204,10 @@ authRoute.post("/v1/auth/google", async (c) => {
  */
 authRoute.post("/v1/auth/dev", async (c) => {
   if (!process.env["DEV_TOKEN"]) {
-    return c.notFound();
+    return c.json(
+      { error_kind: "not_found", message: "DEV_TOKEN が設定されていません。サーバ環境変数を確認してください。" },
+      404,
+    );
   }
 
   try {

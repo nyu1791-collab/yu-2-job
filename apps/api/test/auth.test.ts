@@ -220,10 +220,13 @@ describe("POST /v1/auth/dev", () => {
     await maybeClose?.close?.();
   });
 
-  it("DEV_TOKEN未設定の場合は404", async () => {
+  it("DEV_TOKEN未設定の場合は404(理由が分かるメッセージ付き)", async () => {
     const app = createApp();
     const res = await app.request("/v1/auth/dev", { method: "POST" });
     expect(res.status).toBe(404);
+    const body = (await res.json()) as { error_kind: string; message: string };
+    expect(body.error_kind).toBe("not_found");
+    expect(body.message).toContain("DEV_TOKEN");
   });
 
   it("DEV_TOKEN設定済み・DB設定済み -> DEV_USER_ID向けのaccessToken/refreshTokenを発行する", async () => {

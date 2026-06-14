@@ -199,10 +199,7 @@ export default function SignInScreen() {
     try {
       const response = await devLogin();
       if (!response.ok) {
-        showAlert(
-          "devログインを利用できません",
-          "サーバの環境変数 DEV_TOKEN が設定されていないか、エラーが発生しました。",
-        );
+        showAlert("devログインを利用できません", response.message);
         return;
       }
       await setAuthTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken, userId: "dev" });
