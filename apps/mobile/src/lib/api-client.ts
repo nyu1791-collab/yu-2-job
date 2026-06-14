@@ -10,12 +10,14 @@ import {
  *
  * 環境変数:
  *   EXPO_PUBLIC_API_URL   - 例: http://localhost:8787
- *   EXPO_PUBLIC_DEV_TOKEN - apps/api の DEV_TOKEN と同じ値(devビルドの「devトークンでスキップ」用)
+ *   EXPO_PUBLIC_DEV_TOKEN - 「devトークンでスキップ」ボタンの表示フラグ(値そのものは未使用)。
+ *                           何らかの非空文字列を設定すればボタンが表示される。
  *
  * M3: Apple/Googleサインイン後はauth-storeに保存されたJWTを使用する(authedFetch)。
- * EXPO_PUBLIC_DEV_TOKEN はsign-in.tsxの「devトークンでスキップ」ボタンから
- * setAuthTokens({accessToken: devToken, ...}) のように使われ、
- * requireAuth() がdevトークンとして認識して通す。
+ * 「devトークンでスキップ」ボタンは devLogin()(POST /v1/auth/dev)を呼び、
+ * サーバ側の DEV_TOKEN が設定されていればdevユーザー向けのJWTを発行してもらう。
+ * apps/api の DEV_TOKEN と EXPO_PUBLIC_DEV_TOKEN は値を一致させる必要はなく、
+ * それぞれ「devログインを有効にするか」のフラグとしてのみ機能する。
  */
 
 export type AnalyzeErrorKind =
@@ -284,6 +286,17 @@ export async function signInWithGoogle(idToken: string): Promise<AuthResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ idToken }),
   });
+  return parseAuthResponse(res);
+}
+
+/**
+ * POST /v1/auth/dev: Webデモ/開発用のサインイン。
+ * サーバ側で `DEV_TOKEN` が設定されている場合のみ200を返し、固定devユーザー向けの
+ * accessToken/refreshTokenを発行する(未設定の場合は404)。
+ */
+export async function devLogin(): Promise<AuthResponse> {
+  const baseUrl = getApiBaseUrl();
+  const res = await fetch(`${baseUrl}/v1/auth/dev`, { method: "POST" });
   return parseAuthResponse(res);
 }
 

@@ -58,7 +58,7 @@ pnpm install
 | 変数名 | 必須/任意 | 説明 |
 | --- | --- | --- |
 | `EXPO_PUBLIC_API_URL` | 必須 | バックエンドAPIのベースURL(例: `http://localhost:8787`)。 |
-| `EXPO_PUBLIC_DEV_TOKEN` | 開発用 | `apps/api` の `DEV_TOKEN` と同じ値。サインイン画面の「devトークンでスキップ」ボタンから使用。 |
+| `EXPO_PUBLIC_DEV_TOKEN` | 開発用 | サインイン画面の「devトークンでスキップ」ボタンの表示フラグ(値そのものは未使用)。何らかの非空文字列を設定する。 |
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Googleサインイン利用時 | Google OAuthクライアントID(プラットフォーム別)。 |
 | `EXPO_PUBLIC_RC_API_KEY` / `EXPO_PUBLIC_RC_API_KEY_IOS` / `EXPO_PUBLIC_RC_API_KEY_ANDROID` | 課金機能利用時 | RevenueCatのPublic SDK Key。プラットフォーム別キーがあれば `_IOS`/`_ANDROID` を優先。 |
 
@@ -217,8 +217,9 @@ iPhoneのSafariなどから**アプリの見た目・画面遷移を確認する
    - 「Environment Variables」セクションで、以下を追加します。
      - `EXPO_PUBLIC_API_URL` : バックエンドAPI(`apps/api`)のURL
        (例: `https://your-api.example.com`)
-     - `EXPO_PUBLIC_DEV_TOKEN` : `apps/api` 側の `DEV_TOKEN` と
-       同じ値(開発用の「devトークンでスキップ」サインインに使います)
+     - `EXPO_PUBLIC_DEV_TOKEN` : 何らかの非空文字列(値は使われず、
+       「devトークンでスキップ」ボタンの表示フラグとしてのみ機能します。
+       `apps/api` 側の `DEV_TOKEN` と値を揃える必要はありません)
    - **注意**: これらはバックエンドAPI(`apps/api`)が別途デプロイされて
      稼働している必要があります。`apps/api` のデプロイ手順(Neon + Vercel)は
      [`apps/api/DEPLOY.md`](apps/api/DEPLOY.md) を参照してください。

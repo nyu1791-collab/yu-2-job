@@ -9,6 +9,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { _resetDbForTest, _setDbForTest, type Db } from "../src/db/client.js";
+import { DEV_USER_ID } from "../src/db/seed.js";
 import {
   _resetAuthTestOverrides,
   _setAuthTestOverrides,
@@ -194,6 +195,70 @@ describe("/v1/auth/apple, /v1/auth/google", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /v1/auth/dev", () => {
+  let db: Db;
+
+  beforeAll(async () => {
+    db = await setupTestDb();
+  });
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV, JWT_SECRET: "test-jwt-secret" };
+    _setDbForTest(db);
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    _resetDbForTest();
+  });
+
+  afterAll(async () => {
+    const maybeClose = (db as unknown as { $client?: { close?: () => Promise<void> } }).$client;
+    await maybeClose?.close?.();
+  });
+
+  it("DEV_TOKEN未設定の場合は404", async () => {
+    const app = createApp();
+    const res = await app.request("/v1/auth/dev", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
+  it("DEV_TOKEN設定済み・DB設定済み -> DEV_USER_ID向けのaccessToken/refreshTokenを発行する", async () => {
+    process.env["DEV_TOKEN"] = "dev-secret";
+
+    const app = createApp();
+    const res = await app.request("/v1/auth/dev", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string };
+    };
+    expect(body.user.id).toBe(DEV_USER_ID);
+    expect(body.refreshToken).toHaveLength(64);
+    expect(await verifyAccessToken(body.accessToken)).toBe(DEV_USER_ID);
+  });
+
+  it("/v1/auth/dev で発行したリフレッシュトークンは /v1/auth/refresh でローテーションできる", async () => {
+    process.env["DEV_TOKEN"] = "dev-secret";
+
+    const app = createApp();
+    const devRes = await app.request("/v1/auth/dev", { method: "POST" });
+    const devBody = (await devRes.json()) as { refreshToken: string };
+
+    const refreshRes = await app.request("/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: devBody.refreshToken }),
+    });
+
+    expect(refreshRes.status).toBe(200);
+    const refreshBody = (await refreshRes.json()) as { accessToken: string };
+    expect(await verifyAccessToken(refreshBody.accessToken)).toBe(DEV_USER_ID);
   });
 });
 

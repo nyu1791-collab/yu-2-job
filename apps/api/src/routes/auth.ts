@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { JWTVerifyGetKey } from "jose";
 import { getDb, isDbConfigured } from "../db/client.js";
+import { DEV_USER_ID } from "../db/seed.js";
 import { refreshTokens, users } from "../db/schema.js";
 import {
   IdTokenVerificationError,
@@ -187,6 +188,39 @@ authRoute.post("/v1/auth/google", async (c) => {
     const user = await upsertUserBySub("google", identity.sub, identity.email);
     const tokens = await issueTokenPair(user.id);
     return c.json({ ...tokens, user: userResponse(user) }, 200);
+  } catch (err) {
+    return handleAuthError(c, err);
+  }
+});
+
+/**
+ * POST /v1/auth/dev
+ *
+ * Webデモ/開発用のサインイン。`DEV_TOKEN` が設定されている場合のみ有効(未設定時は404)。
+ * 固定devユーザー(`DEV_USER_ID`)向けのアクセスJWT(+ DB設定時はリフレッシュトークン)を発行する。
+ *
+ * これにより、モバイル側の `EXPO_PUBLIC_DEV_TOKEN` の値はAPI側の `DEV_TOKEN` と
+ * 一致させる必要がなくなる(両方が「devログインを有効にするか」のフラグとしてのみ機能する)。
+ */
+authRoute.post("/v1/auth/dev", async (c) => {
+  if (!process.env["DEV_TOKEN"]) {
+    return c.notFound();
+  }
+
+  try {
+    if (!isDbConfigured()) {
+      const accessToken = await signAccessToken(DEV_USER_ID);
+      return c.json(
+        { accessToken, refreshToken: "", user: { id: DEV_USER_ID, email: null, displayName: "Dev User" } },
+        200,
+      );
+    }
+
+    const tokens = await issueTokenPair(DEV_USER_ID);
+    return c.json(
+      { ...tokens, user: { id: DEV_USER_ID, email: null, displayName: "Dev User" } },
+      200,
+    );
   } catch (err) {
     return handleAuthError(c, err);
   }

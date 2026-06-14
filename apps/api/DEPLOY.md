@@ -89,23 +89,9 @@ curl https://<project>.vercel.app/health
   `apps/api/build-vercel.sh` を実行して `.vercel/output/` (Build Output API) を生成します。
   これがそのままデプロイされる関数本体になります。
 - `INTERNAL_CRON_SECRET` を設定しない場合、`/v1/internal/cost-report` は500を返す(Cronが失敗する)。
-- `DEV_TOKEN` は、モバイル側Vercelプロジェクトの環境変数 `EXPO_PUBLIC_DEV_TOKEN` と
-  **完全に同じ値**である必要があります(後述「devトークンが一致しない場合」参照)。
-
-## devトークンが一致しない場合(「トークンが無効です。」エラー)
-
-モバイルアプリで「devトークンでスキップ」してサインインした後、AI解析などのAPI呼び出しで
-`{"message":"トークンが無効です。"}` (401) が返る場合、この `apps/api` 側の `DEV_TOKEN` と
-モバイル側Vercelプロジェクトの `EXPO_PUBLIC_DEV_TOKEN` の値が一致していません。
-
-対処方法:
-
-1. この `apps/api` プロジェクトの Vercel > Settings > Environment Variables で
-   `DEV_TOKEN` の値を確認する(未設定なら適当な固定文字列を設定して再デプロイ)。
-2. モバイル側プロジェクト(`apps/mobile`)の Vercel > Settings > Environment Variables で
-   `EXPO_PUBLIC_DEV_TOKEN` を、手順1と**全く同じ値**に設定する。
-3. `EXPO_PUBLIC_*` はビルド時に静的に埋め込まれるため、値を変更・新規設定した後は
-   モバイル側プロジェクトを**再デプロイ(Redeploy)**する必要がある
-   (Deployments タブ > 最新デプロイの「…」メニュー > Redeploy)。
-4. 再デプロイ完了後、モバイルアプリでいったんサインアウト/サインインし直し
-   (「devトークンでスキップ」を再度実行)、新しいトークンを取得する。
+- `DEV_TOKEN` は `POST /v1/auth/dev`(モバイルの「devトークンでスキップ」)を有効にする
+  フラグとして使われる。**モバイル側Vercelプロジェクトの `EXPO_PUBLIC_DEV_TOKEN` と
+  値を一致させる必要はない**(両方とも「devログインを有効にするか」のオン/オフのみが意味を持つ)。
+  この `apps/api` 側で `DEV_TOKEN` が未設定の場合、`POST /v1/auth/dev` は404になり、
+  モバイルの「devトークンでスキップ」は `{"message":"トークンが無効です。"}` ではなく
+  「devログインを利用できません」エラーになる。

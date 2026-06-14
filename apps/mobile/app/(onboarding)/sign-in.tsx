@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  devLogin,
   getDevToken,
   signInWithApple,
   signInWithGoogle,
@@ -189,26 +190,28 @@ export default function SignInScreen() {
   }
 
   /**
-   * devビルド用: EXPO_PUBLIC_DEV_TOKEN をアクセストークンとしてそのまま保存し、
-   * devユーザー(DEV_USER_ID)としてAPIを使えるようにする。
-   * requireAuth() はこのトークンをDEV_TOKENとして認識する。
-   * リフレッシュトークンは持たない(devトークンに有効期限がないため)。
+   * devビルド用: POST /v1/auth/dev を呼び、サーバ側のDEV_TOKENが設定されていれば
+   * devユーザー(DEV_USER_ID)向けのJWTを発行してもらう。
+   * `userId: "dev"` はローカル識別用のマーカー(_layout.tsxのpaywallバイパス判定に使用)。
    */
   async function handleDevTokenSkip() {
-    const devToken = getDevToken();
-    if (!devToken) {
-      showAlert(
-        "devトークンが設定されていません",
-        "EXPO_PUBLIC_DEV_TOKEN を .env に設定してください。",
-      );
-      return;
-    }
     setIsLoading(true);
     try {
-      await setAuthTokens({ accessToken: devToken, refreshToken: "", userId: "dev" });
+      const response = await devLogin();
+      if (!response.ok) {
+        showAlert(
+          "devログインを利用できません",
+          "サーバの環境変数 DEV_TOKEN が設定されていないか、エラーが発生しました。",
+        );
+        return;
+      }
+      await setAuthTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken, userId: "dev" });
       await saveGoalIfNeeded();
       await syncRevenueCatAppUserId("dev");
       router.replace("/(onboarding)/paywall");
+    } catch (err) {
+      console.error(err);
+      showAlert("devログインに失敗しました", "もう一度お試しください。");
     } finally {
       setIsLoading(false);
     }

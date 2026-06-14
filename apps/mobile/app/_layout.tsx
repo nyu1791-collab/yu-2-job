@@ -3,7 +3,6 @@ import type { ErrorBoundaryProps } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { getDevToken } from "../src/lib/api-client";
 import { loadAuthFromStorage, useAuthState } from "../src/lib/auth-store";
 import { syncMealReminders } from "../src/lib/notifications";
 
@@ -126,7 +125,7 @@ export default function RootLayout() {
     return <Redirect href="/(onboarding)/welcome" />;
   }
 
-  const isDevTokenUser = auth.accessToken === getDevToken();
+  const isDevTokenUser = auth.userId === "dev";
 
   if (auth.accessToken && !isDevTokenUser && auth.entitlement?.entitled === false && !inPaywall) {
     return <Redirect href="/(onboarding)/paywall" />;
